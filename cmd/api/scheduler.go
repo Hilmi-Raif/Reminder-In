@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"reminderin/internal/store"
 	"reminderin/internal/whatsapp"
@@ -32,6 +31,11 @@ func (s *Scheduler) Start() {
 	if err != nil {
 		log.Printf("Error scheduling: %v", err)
 		return
+	}
+
+	_, err = s.cron.AddFunc("0 0 * * *", s.keepAliveClients) 
+	if err != nil {
+		log.Printf("Error scheduling keep-alive: %v", err)
 	}
 
 	s.cron.Start()
@@ -95,11 +99,9 @@ func (s *Scheduler) processReminders() {
 		}
 
 		if failed > 0 {
-			log.Printf("WA Reminder %s had partial delivery failure: %d/%d failed", rem.ID, failed, len(targets))
-			if lastErr != nil {
-				return fmt.Errorf("partial delivery failure (%d/%d): %w", failed, len(targets), lastErr)
-			}
-			return fmt.Errorf("partial delivery failure (%d/%d)", failed, len(targets))
+			log.Printf("WA Reminder %s had partial delivery failure: %d/%d failed (error: %v)", rem.ID, failed, len(targets), lastErr)
+			
+			
 		}
 
 		if rem.Recurrence != "" {
@@ -107,4 +109,24 @@ func (s *Scheduler) processReminders() {
 		}
 		return nil
 	})
+}
+
+func (s *Scheduler) keepAliveClients() {
+	waNumber := s.store.GetWANumber()
+	if waNumber == "" {
+		return
+	}
+
+	client, err := s.waMgr.GetClient(waNumber)
+	if err != nil || client == nil || !client.IsConnected() {
+		return
+	}
+
+	
+	err = s.waMgr.SendPresence(waNumber)
+	if err != nil {
+		log.Printf("Failed to send presence keep-alive for %s: %v", waNumber, err)
+	} else {
+		log.Printf("Presence keep-alive sent for %s", waNumber)
+	}
 }

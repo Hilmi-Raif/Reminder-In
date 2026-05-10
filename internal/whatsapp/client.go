@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,11 +47,19 @@ func NewClientManager() (*ClientManager, error) {
 	dbLog := waLog.Stdout("Database", "WARN", true)
 	clientLog := waLog.Stdout("Client", "WARN", true)
 
-	if err := os.MkdirAll("data", 0755); err != nil {
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "data/reminderin.db"
+	}
+	dbDir := filepath.Dir(dbPath)
+	waDbPath := filepath.Join(dbDir, "wa_sessions.db")
+	waDbPath = strings.ReplaceAll(waDbPath, "\\", "/")
+
+	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return nil, err
 	}
 
-	container, err := sqlstore.New(context.Background(), "sqlite3", "file:data/wa_sessions.db?_foreign_keys=on", dbLog)
+	container, err := sqlstore.New(context.Background(), "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", waDbPath), dbLog)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +200,28 @@ func (cm *ClientManager) AddClient(client *whatsmeow.Client) {
 		delete(cm.contactsCache, client.Store.ID.User)
 		cm.mu.Unlock()
 	}
+}
+
+func (cm *ClientManager) SendPresence(jid string) error {
+	cm.mu.RLock()
+	client, ok := cm.clients[jid]
+	cm.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("client not found for JID: %s", jid)
+	}
+
+	if !client.IsConnected() {
+		return fmt.Errorf("client %s is not connected", jid)
+	}
+
+	ctx := context.Background()
+	if cm.sendTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, cm.sendTimeout)
+		defer cancel()
+	}
+
+	return client.SendPresence(ctx, types.PresenceAvailable)
 }
 
 func (cm *ClientManager) Logout(jid string) error {
