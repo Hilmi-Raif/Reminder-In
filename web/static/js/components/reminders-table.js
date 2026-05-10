@@ -1,6 +1,6 @@
 import { t } from "../i18n/lang.js";
 import { escapeHtml, formatWhatsAppMarkdown } from "../utils/html.js";
-import { cronToText, formatHumanDate } from "../utils/format.js";
+import { formatHumanDate } from "../utils/format.js";
 import { fetchRemindersApi } from "../api/reminders.js";
 import { state, globals } from "../store/state.js";
 
@@ -71,8 +71,8 @@ export async function loadReminders(fresh = true) {
 }
 
 function buildRowCellsHTML(rem) {
-  const recSentence = cronToText(rem.recurrence);
-  const isRecurring = rem.recurrence && rem.recurrence.trim() !== "";
+  const recurrence = (rem.recurrence || "").trim();
+  const isRecurring = recurrence !== "";
   const isExpired = !isRecurring && new Date(rem.scheduled_at) < new Date();
   const toggleDisabled = isExpired;
 
@@ -87,7 +87,7 @@ function buildRowCellsHTML(rem) {
         <div style="font-weight: 500;">${escapeHtml(formatHumanDate(rem.scheduled_at))}</div>
     </td>
     <td data-label="${t("thRecurrence")}">
-        <div style="font-weight: 500;">${escapeHtml(recSentence)}</div>
+        <div style="font-weight: 500;">${escapeHtml(recurrence)}</div>
     </td>
     <td data-label="${t("thStatus")}" align="center">
         <input type="checkbox" onchange="toggleReminder('${rem.id}')" 

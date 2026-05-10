@@ -1,85 +1,15 @@
-import { t, fpLocaleId, currentLang } from "../i18n/lang.js";
+import { t } from "../i18n/lang.js";
 import { showMsg } from "./toast.js";
 import { state, globals } from "../store/state.js";
 import { loadReminders } from "./reminders-table.js";
 import { htmlToWAMarkdown, formatWhatsAppMarkdown } from "../utils/html.js";
-import { cronToText, cronNextTime } from "../utils/format.js";
 import { renderEditTargetChips } from "./target-chips.js";
 
 const editModal = document.getElementById("edit-modal");
 const closeEditBtn = document.getElementById("close-edit-btn");
 const editForm = document.getElementById("edit-schedule-form");
-const editTimeContainer = document.getElementById("edit-time-container");
 const editRecurrenceInput = document.getElementById("edit-recurrence");
-const editCronPreview = document.getElementById("edit-cron-preview");
-
-export let editTimePicker;
-let editPickerOutsideBound = false;
-
-function isPickerInternalTarget(target, picker) {
-  if (!picker || !target) return false;
-  const calendar = picker.calendarContainer;
-  const input = picker.input;
-  const altInput = picker.altInput;
-
-  return (
-    (calendar && calendar.contains(target)) ||
-    (input && (input === target || input.contains(target))) ||
-    (altInput && (altInput === target || altInput.contains(target)))
-  );
-}
-
 export function initEditModal() {
-  editTimePicker = flatpickr("#edit-time", {
-    enableTime: true,
-    time_24hr: true,
-    dateFormat: "Y-m-d H:i",
-    altInput: true,
-    altFormat: "j F Y, H:i",
-    minDate: "today",
-    disableMobile: true,
-    appendTo: document.body,
-    locale: currentLang === "id" ? fpLocaleId : "default",
-  });
-
-  if (!editPickerOutsideBound) {
-    document.addEventListener(
-      "pointerdown",
-      (e) => {
-        if (!editTimePicker || !editTimePicker.isOpen) return;
-        if (isPickerInternalTarget(e.target, editTimePicker)) return;
-        editTimePicker.close();
-      },
-      true,
-    );
-    editPickerOutsideBound = true;
-  }
-
-  function updateEditTimeVisibility() {
-    const hasCron = editRecurrenceInput.value.trim() !== "";
-    editTimeContainer.hidden = hasCron;
-  }
-
-  if (editRecurrenceInput)
-    editRecurrenceInput.addEventListener("input", (e) => {
-      const expr = e.target.value.trim();
-      const text = cronToText(expr, true);
-      const next = cronNextTime(expr);
-      editCronPreview.textContent = next ? `${text} — ${next}` : text;
-      updateEditTimeVisibility();
-    });
-
-  document.querySelectorAll(".edit-cron-preset").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      editRecurrenceInput.value = btn.dataset.cron;
-      const expr = btn.dataset.cron;
-      const text = cronToText(expr, true);
-      const next = cronNextTime(expr);
-      editCronPreview.textContent = next ? `${text} — ${next}` : text;
-      updateEditTimeVisibility();
-    });
-  });
-
   window.editReminder = (id) => {
     const rem = state.remindersData.find((r) => r.id === id);
     if (!rem) {
@@ -101,19 +31,8 @@ export function initEditModal() {
     renderEditTargetChips();
     document.getElementById("edit-target-input").value = "";
 
-    editRecurrenceInput.value = rem.recurrence || "";
+    editRecurrenceInput.value = (rem.recurrence || "").trim();
 
-    if (rem.recurrence) {
-      const text = cronToText(rem.recurrence);
-      const next = cronNextTime(rem.recurrence);
-      editCronPreview.textContent = next ? `${text} — ${next}` : text;
-      editTimePicker.clear();
-    } else {
-      editCronPreview.textContent = t("cronHintEmpty");
-      editTimePicker.setDate(new Date(rem.scheduled_at));
-    }
-
-    updateEditTimeVisibility();
     editModal.classList.add("active");
     document.body.style.overflow = "hidden";
   };
@@ -139,27 +58,21 @@ export function initEditModal() {
         ? htmlToWAMarkdown(globals.editQuill.root.innerHTML)
         : "";
       const targetWa = (globals.editTargetNumbers || []).join(",");
-      const recurrence = editRecurrenceInput.value;
-      const timeVal = document.getElementById("edit-time").value;
-      const hasCron = recurrence.trim() !== "";
+      const recurrence = editRecurrenceInput.value.trim();
 
-      if (!hasCron && !timeVal) {
-        showMsg(t("editTimePast"), true);
+      if (!recurrence) {
+        showMsg(t("enterCron"), true);
         return;
       }
 
       try {
         btn.disabled = true;
-        const isoDate = hasCron
-          ? new Date().toISOString()
-          : new Date(timeVal).toISOString();
-
         const payload = {
           id: id,
           message: message,
           target_wa: targetWa,
-          recurrence: recurrence.trim(),
-          scheduled_at: isoDate,
+          recurrence,
+          scheduled_at: new Date().toISOString(),
         };
 
         const res = await fetch(`/api/reminders/${id}`, {

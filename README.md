@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://github.com/user-attachments/assets/f1de9410-6120-4454-93e2-81b89fd596f1">
-    <img src="https://github.com/user-attachments/assets/f1de9410-6120-4454-93e2-81b89fd596f1" alt="ReminderIn dashboard screenshot" width="100%" />
+    <img src="https://github.com/user-attachments/assets/5de67f83-10d3-4426-afb1-df6d8a31d5d2" alt="ReminderIn dashboard screenshot" width="100%" />
   </a>
 </p>
 
@@ -32,39 +32,6 @@ Schedule one-time or recurring reminders, then deliver them to yourself, contact
 | Auth       | JWT (`golang-jwt/jwt/v5`) |
 | WhatsApp   | `whatsmeow` |
 | Frontend   | HTML, CSS, Vanilla JS |
-
-## Project Structure
-
-```text
-Reminderin/
-|-- cmd/
-|   `-- api/
-|       |-- main.go
-|       |-- scheduler.go
-|       `-- main_test.go
-|-- internal/
-|   |-- handler/
-|   |   |-- api.go
-|   |   `-- api_test.go
-|   |-- store/
-|   |   |-- sqlite_store.go
-|   |   `-- sqlite_store_test.go
-|   `-- whatsapp/
-|       `-- client.go
-|-- web/
-|   |-- embed.go
-|   `-- static/
-|       |-- index.html
-|       |-- css/
-|       |-- js/
-|       `-- vendor/
-|-- data/
-|-- Dockerfile
-|-- .dockerignore
-|-- .env.example
-|-- go.mod
-`-- go.sum
-```
 
 ## Environment Variables
 

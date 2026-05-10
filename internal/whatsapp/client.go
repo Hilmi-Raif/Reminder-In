@@ -16,6 +16,7 @@ import (
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"google.golang.org/protobuf/proto"
 )
@@ -94,7 +95,37 @@ func (cm *ClientManager) GetClient(jid string) (*whatsmeow.Client, error) {
 func (cm *ClientManager) GetNewAuthClient() *whatsmeow.Client {
 	deviceStore := cm.container.NewDevice()
 	client := whatsmeow.NewClient(deviceStore, cm.log)
+	cm.setupEventHandler(client)
 	return client
+}
+
+func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
+	client.AddEventHandler(func(evt interface{}) {
+		switch e := evt.(type) {
+		case *events.LoggedOut:
+			if e.OnConnect && e.Reason.IsLoggedOut() {
+				if client.Store.ID != nil {
+					user := client.Store.ID.User
+					cm.mu.Lock()
+					delete(cm.clients, user)
+					delete(cm.groupsCache, user)
+					delete(cm.contactsCache, user)
+					cm.mu.Unlock()
+					cm.log.Warnf("Client %s logged out (OnConnect: %v, Reason: %v)", user, e.OnConnect, e.Reason)
+				}
+			} else if !e.OnConnect {
+				if client.Store.ID != nil {
+					user := client.Store.ID.User
+					cm.mu.Lock()
+					delete(cm.clients, user)
+					delete(cm.groupsCache, user)
+					delete(cm.contactsCache, user)
+					cm.mu.Unlock()
+					cm.log.Warnf("Client %s logged out via stream error", user)
+				}
+			}
+		}
+	})
 }
 
 func (cm *ClientManager) LoadAllClients() error {
@@ -105,6 +136,7 @@ func (cm *ClientManager) LoadAllClients() error {
 
 	for _, device := range devices {
 		client := whatsmeow.NewClient(device, cm.log)
+		cm.setupEventHandler(client)
 		if device.ID != nil {
 			cm.mu.Lock()
 			cm.clients[device.ID.User] = client
@@ -137,6 +169,7 @@ func (cm *ClientManager) LoadClient(user string) error {
 		}
 
 		client := whatsmeow.NewClient(device, cm.log)
+		cm.setupEventHandler(client)
 		cm.mu.Lock()
 		cm.clients[user] = client
 		delete(cm.groupsCache, user)
@@ -161,7 +194,10 @@ func (cm *ClientManager) SendMessage(jid string, target string, message string) 
 	}
 
 	if !client.IsConnected() {
-		return fmt.Errorf("client %s is not connected", jid)
+		_ = client.Connect()
+		if !client.IsConnected() {
+			return fmt.Errorf("client %s is not connected", jid)
+		}
 	}
 
 	if !strings.Contains(target, "@") {
@@ -211,7 +247,10 @@ func (cm *ClientManager) SendPresence(jid string) error {
 	}
 
 	if !client.IsConnected() {
-		return fmt.Errorf("client %s is not connected", jid)
+		_ = client.Connect()
+		if !client.IsConnected() {
+			return fmt.Errorf("client %s is not connected", jid)
+		}
 	}
 
 	ctx := context.Background()
@@ -261,7 +300,10 @@ func (cm *ClientManager) GetJoinedGroups(jid string) ([]GroupInfo, error) {
 	}
 
 	if !client.IsConnected() {
-		return nil, fmt.Errorf("client %s is not connected", jid)
+		_ = client.Connect()
+		if !client.IsConnected() {
+			return nil, fmt.Errorf("client %s is not connected", jid)
+		}
 	}
 
 	now := time.Now()
@@ -318,7 +360,7 @@ func (cm *ClientManager) GetContacts(jid string) ([]ContactInfo, error) {
 	}
 
 	if !client.IsConnected() {
-		return nil, fmt.Errorf("client %s is not connected", jid)
+		cm.log.Warnf("Client %s is not connected, attempting to fetch contacts from local store", jid)
 	}
 
 	now := time.Now()

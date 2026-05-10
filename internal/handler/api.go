@@ -285,7 +285,7 @@ func (h *APIHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 
 	groups, err := h.WaMgr.GetJoinedGroups(waNumber)
 	if err != nil {
-		writeJSON(w, http.StatusOK, []interface{}{})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h *APIHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 	contacts, err := h.WaMgr.GetContacts(waNumber)
 	if err != nil {
-		writeJSON(w, http.StatusOK, []interface{}{})
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

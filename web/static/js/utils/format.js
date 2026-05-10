@@ -1,28 +1,5 @@
 import { t, currentLang } from "../i18n/lang.js";
 
-export function cronToText(expr, forPreview = false) {
-  if (!expr) return forPreview ? t("cronHintEmpty") : t("oneTime");
-  try {
-    return cronstrue.toString(expr, {
-      locale: currentLang === "id" ? "id" : "en",
-      use24HourTimeFormat: true,
-    });
-  } catch (e) {
-    return t("cronInvalid");
-  }
-}
-
-export function cronNextTime(expr) {
-  if (!expr) return "";
-  try {
-    const parts = expr.trim().split(/\s+/);
-    if (parts.length !== 5) return "";
-    return "Mulai berjalan segera setelah dijadwalkan";
-  } catch (e) {
-    return "";
-  }
-}
-
 export function formatHumanDate(isoString) {
   const date = new Date(isoString);
   const now = new Date();

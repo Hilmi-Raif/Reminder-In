@@ -50,17 +50,8 @@ const translations = {
     pickContact: "Pick Contact",
     targetHint: "Leave empty to send to yourself.",
     recurrence: "Recurrence:",
-    hourly: "Hourly",
-    daily: "Daily",
-    weekly: "Weekly",
-    monthly: "Monthly",
     cronPlaceholder: "Cron expression (e.g. */30 * * * *)",
-    cronHintEmpty: "Leave empty for one-time only.",
-    cronInvalid: "⚠ Invalid cron format",
-    oneTime: "One-time only",
-    time: "Time:",
-    timePlaceholder: "Pick date & time...",
-    scheduleBtn: "Schedule!",
+    scheduleBtn: "Save",
 
     reminderList: "Your Reminders",
     searchPlaceholder: "Search messages...",
@@ -110,13 +101,12 @@ const translations = {
     saveChanges: "Save Changes",
     editSuccess: "Reminder updated successfully",
     editNotFound: "Reminder data not found",
-    editTimePast: "Please select a time first",
     editFailed: "Failed:",
     editNetError: "Network error occurred",
 
     waNotLinked: "Connect WhatsApp first!",
     enterMessage: "Enter at least 1 message",
-    selectTime: "Please select a time first",
+    enterCron: "Enter a cron expression",
     scheduled: "reminders scheduled!",
     partialFail: "Some failed. Succeeded:",
     toggleFailed: "Failed to change status",
@@ -186,17 +176,8 @@ const translations = {
     pickContact: "Pilih Kontak",
     targetHint: "Kosongkan untuk kirim ke diri sendiri.",
     recurrence: "Pengulangan:",
-    hourly: "Tiap Jam",
-    daily: "Harian",
-    weekly: "Mingguan",
-    monthly: "Bulanan",
     cronPlaceholder: "Cron expression (misal: */30 * * * *)",
-    cronHintEmpty: "Kosongkan untuk hanya sekali.",
-    cronInvalid: "⚠ Format cron tidak valid",
-    oneTime: "Hanya sekali",
-    time: "Waktu:",
-    timePlaceholder: "Pilih tanggal & waktu...",
-    scheduleBtn: "Jadwalkan!",
+    scheduleBtn: "Simpan",
 
     reminderList: "Daftar Pengingat Anda",
     searchPlaceholder: "Cari pesan...",
@@ -247,13 +228,12 @@ const translations = {
     saveChanges: "Simpan Perubahan",
     editSuccess: "Pengingat berhasil diperbarui",
     editNotFound: "Data pengingat tidak ditemukan",
-    editTimePast: "Pilih waktu terlebih dahulu",
     editFailed: "Gagal:",
     editNetError: "Terjadi kesalahan jaringan",
 
     waNotLinked: "Sambungkan WhatsApp terlebih dahulu!",
     enterMessage: "Masukkan setidaknya 1 pesan",
-    selectTime: "Pilih waktu terlebih dahulu",
+    enterCron: "Masukkan cron expression",
     scheduled: "pengingat dijadwalkan!",
     partialFail: "Beberapa gagal. Berhasil:",
     toggleFailed: "Gagal mengubah status",
@@ -271,44 +251,6 @@ const translations = {
     loading: "Memuat...",
 
     copyright: "© 2026 ReminderIn. Hak Cipta Dilindungi.",
-  },
-};
-
-export const fpLocaleId = {
-  firstDayOfWeek: 1,
-  weekdays: {
-    shorthand: ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"],
-    longhand: ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"],
-  },
-  months: {
-    shorthand: [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "Mei",
-      "Jun",
-      "Jul",
-      "Agu",
-      "Sep",
-      "Okt",
-      "Nov",
-      "Des",
-    ],
-    longhand: [
-      "Januari",
-      "Februari",
-      "Maret",
-      "April",
-      "Mei",
-      "Juni",
-      "Juli",
-      "Agustus",
-      "September",
-      "Oktober",
-      "November",
-      "Desember",
-    ],
   },
 };
 
@@ -355,11 +297,6 @@ export function applyLanguage(lang) {
   document.querySelectorAll("#page-size option").forEach((opt) => {
     opt.textContent = opt.value + " " + t("perPage");
   });
-
-  if (typeof timePicker !== "undefined")
-    timePicker.set("locale", lang === "id" ? fpLocaleId : "default");
-  if (typeof editTimePicker !== "undefined")
-    editTimePicker.set("locale", lang === "id" ? fpLocaleId : "default");
 
   if (!document.getElementById("app-view").hidden) {
     import("../components/wa-connection.js")

@@ -1,85 +1,14 @@
-import { t, fpLocaleId, currentLang } from "../i18n/lang.js";
+import { t } from "../i18n/lang.js";
 import { showMsg } from "./toast.js";
 import { state, globals } from "../store/state.js";
 import { loadReminders } from "./reminders-table.js";
 import { htmlToWAMarkdown } from "../utils/html.js";
-import { cronToText, cronNextTime } from "../utils/format.js";
 import { renderTargetChips } from "./target-chips.js";
 import { pruneMessageEditors } from "./message-editor.js";
 
 const scheduleForm = document.getElementById("schedule-form");
-const timeContainer = document.getElementById("time-container");
 const cronInput = document.getElementById("recurrence");
-const cronPreview = document.getElementById("cron-preview");
-
-export let timePicker;
-let schedulePickerOutsideBound = false;
-
-function isPickerInternalTarget(target, picker) {
-  if (!picker || !target) return false;
-  const calendar = picker.calendarContainer;
-  const input = picker.input;
-  const altInput = picker.altInput;
-
-  return (
-    (calendar && calendar.contains(target)) ||
-    (input && (input === target || input.contains(target))) ||
-    (altInput && (altInput === target || altInput.contains(target)))
-  );
-}
-
 export function initScheduleForm() {
-  timePicker = flatpickr("#time", {
-    enableTime: true,
-    time_24hr: true,
-    dateFormat: "Y-m-d H:i",
-    altInput: true,
-    altFormat: "j F Y, H:i",
-    minDate: "today",
-    disableMobile: true,
-    appendTo: document.body,
-    locale: currentLang === "id" ? fpLocaleId : "default",
-  });
-
-  if (!schedulePickerOutsideBound) {
-    document.addEventListener(
-      "pointerdown",
-      (e) => {
-        if (!timePicker || !timePicker.isOpen) return;
-        if (isPickerInternalTarget(e.target, timePicker)) return;
-        timePicker.close();
-      },
-      true,
-    );
-    schedulePickerOutsideBound = true;
-  }
-
-  function updateTimeVisibility() {
-    if (!timeContainer || !cronInput) return;
-    const hasCron = cronInput.value.trim() !== "";
-    timeContainer.hidden = hasCron;
-  }
-
-  document.querySelectorAll(".cron-preset").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      cronInput.value = btn.dataset.cron;
-      const expr = btn.dataset.cron;
-      const text = cronToText(expr, true);
-      const next = cronNextTime(expr);
-      cronPreview.textContent = next ? `${text} — ${next}` : text;
-      updateTimeVisibility();
-    });
-  });
-
-  if (cronInput)
-    cronInput.addEventListener("input", () => {
-      const expr = cronInput.value.trim();
-      const text = cronToText(expr, true);
-      const next = cronNextTime(expr);
-      cronPreview.textContent = next ? `${text} — ${next}` : text;
-      updateTimeVisibility();
-    });
-
   if (scheduleForm)
     scheduleForm.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -114,19 +43,14 @@ export function initScheduleForm() {
           return;
         }
 
-        const recurrence = cronInput.value;
-        const timeVal = document.getElementById("time").value;
-        const hasCron = recurrence.trim() !== "";
-
-        if (!hasCron && !timeVal) {
-          showMsg(t("selectTime"), true);
+        const recurrence = cronInput.value.trim();
+        if (!recurrence) {
+          showMsg(t("enterCron"), true);
           btn.disabled = false;
           return;
         }
 
-        const isoDate = hasCron
-          ? new Date().toISOString()
-          : new Date(timeVal).toISOString();
+        const isoDate = new Date().toISOString();
 
         let successCount = 0;
         for (const msg of messages) {
@@ -167,9 +91,6 @@ export function initScheduleForm() {
         globals.messageCount = 1;
         pruneMessageEditors();
 
-        if (cronPreview)
-          cronPreview.textContent = "Kosongkan untuk hanya sekali.";
-        timePicker.clear();
         globals.targetNumbers = [];
         renderTargetChips();
         state.lastETag = null;
