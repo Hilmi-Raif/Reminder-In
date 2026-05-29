@@ -30,6 +30,8 @@ type ClientManager struct {
 	sendTimeout   time.Duration
 	queryTimeout  time.Duration
 	cacheTTL      time.Duration
+	sendDelay     time.Duration
+	onLogout      func(user string, reason string)
 	groupsCache   map[string]groupCacheEntry
 	contactsCache map[string]contactCacheEntry
 }
@@ -45,8 +47,12 @@ type contactCacheEntry struct {
 }
 
 func NewClientManager() (*ClientManager, error) {
-	dbLog := waLog.Stdout("Database", "WARN", true)
-	clientLog := waLog.Stdout("Client", "WARN", true)
+	waLogLevel := strings.TrimSpace(os.Getenv("WA_LOG_LEVEL"))
+	if waLogLevel == "" {
+		waLogLevel = "WARN"
+	}
+	dbLog := waLog.Stdout("Database", waLogLevel, true)
+	clientLog := waLog.Stdout("Client", waLogLevel, true)
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -60,7 +66,7 @@ func NewClientManager() (*ClientManager, error) {
 		return nil, err
 	}
 
-	container, err := sqlstore.New(context.Background(), "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on", waDbPath), dbLog)
+	container, err := sqlstore.New(context.Background(), "sqlite3", fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000", waDbPath), dbLog)
 	if err != nil {
 		return nil, err
 	}
@@ -68,6 +74,7 @@ func NewClientManager() (*ClientManager, error) {
 	sendTimeout := durationFromEnvSeconds("WA_SEND_TIMEOUT_SECONDS", 20)
 	queryTimeout := durationFromEnvSeconds("WA_QUERY_TIMEOUT_SECONDS", 20)
 	cacheTTL := durationFromEnvSeconds("WA_DIRECTORY_CACHE_TTL_SECONDS", 60)
+	sendDelay := durationFromEnvMilliseconds("WA_SEND_DELAY_MS", 2000)
 
 	return &ClientManager{
 		container:     container,
@@ -76,9 +83,16 @@ func NewClientManager() (*ClientManager, error) {
 		sendTimeout:   sendTimeout,
 		queryTimeout:  queryTimeout,
 		cacheTTL:      cacheTTL,
+		sendDelay:     sendDelay,
 		groupsCache:   make(map[string]groupCacheEntry),
 		contactsCache: make(map[string]contactCacheEntry),
 	}, nil
+}
+
+func (cm *ClientManager) SetLogoutHandler(fn func(user string, reason string)) {
+	cm.mu.Lock()
+	cm.onLogout = fn
+	cm.mu.Unlock()
 }
 
 func (cm *ClientManager) GetClient(jid string) (*whatsmeow.Client, error) {
@@ -103,29 +117,33 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 	client.AddEventHandler(func(evt interface{}) {
 		switch e := evt.(type) {
 		case *events.LoggedOut:
-			if e.OnConnect && e.Reason.IsLoggedOut() {
-				if client.Store.ID != nil {
-					user := client.Store.ID.User
-					cm.mu.Lock()
-					delete(cm.clients, user)
-					delete(cm.groupsCache, user)
-					delete(cm.contactsCache, user)
-					cm.mu.Unlock()
-					cm.log.Warnf("Client %s logged out (OnConnect: %v, Reason: %v)", user, e.OnConnect, e.Reason)
-				}
-			} else if !e.OnConnect {
-				if client.Store.ID != nil {
-					user := client.Store.ID.User
-					cm.mu.Lock()
-					delete(cm.clients, user)
-					delete(cm.groupsCache, user)
-					delete(cm.contactsCache, user)
-					cm.mu.Unlock()
-					cm.log.Warnf("Client %s logged out via stream error", user)
-				}
+			if client.Store.ID == nil {
+				return
 			}
+			user := client.Store.ID.User
+			reason := fmt.Sprintf("OnConnect=%v Reason=%v", e.OnConnect, e.Reason)
+			cm.removeClient(user)
+			cm.log.Warnf("Client %s logged out: %s", user, reason)
+			cm.notifyLogout(user, reason)
 		}
 	})
+}
+
+func (cm *ClientManager) removeClient(user string) {
+	cm.mu.Lock()
+	delete(cm.clients, user)
+	delete(cm.groupsCache, user)
+	delete(cm.contactsCache, user)
+	cm.mu.Unlock()
+}
+
+func (cm *ClientManager) notifyLogout(user string, reason string) {
+	cm.mu.RLock()
+	handler := cm.onLogout
+	cm.mu.RUnlock()
+	if handler != nil {
+		handler(user, reason)
+	}
 }
 
 func (cm *ClientManager) LoadAllClients() error {
@@ -144,7 +162,12 @@ func (cm *ClientManager) LoadAllClients() error {
 			delete(cm.contactsCache, device.ID.User)
 			cm.mu.Unlock()
 		}
-		if err := client.Connect(); err != nil {
+		if err := cm.connectWithRetry(client); err != nil {
+			if device.ID != nil && isFatalConnectError(err) {
+				user := device.ID.User
+				cm.removeClient(user)
+				cm.notifyLogout(user, err.Error())
+			}
 			continue
 		}
 	}
@@ -176,7 +199,11 @@ func (cm *ClientManager) LoadClient(user string) error {
 		delete(cm.contactsCache, user)
 		cm.mu.Unlock()
 
-		if err := client.Connect(); err != nil {
+		if err := cm.connectWithRetry(client); err != nil {
+			if isFatalConnectError(err) {
+				cm.removeClient(user)
+				cm.notifyLogout(user, err.Error())
+			}
 			return err
 		}
 		return nil
@@ -194,7 +221,7 @@ func (cm *ClientManager) SendMessage(jid string, target string, message string) 
 	}
 
 	if !client.IsConnected() {
-		_ = client.Connect()
+		_ = cm.connectWithRetry(client)
 		if !client.IsConnected() {
 			return fmt.Errorf("client %s is not connected", jid)
 		}
@@ -247,7 +274,7 @@ func (cm *ClientManager) SendPresence(jid string) error {
 	}
 
 	if !client.IsConnected() {
-		_ = client.Connect()
+		_ = cm.connectWithRetry(client)
 		if !client.IsConnected() {
 			return fmt.Errorf("client %s is not connected", jid)
 		}
@@ -300,7 +327,7 @@ func (cm *ClientManager) GetJoinedGroups(jid string) ([]GroupInfo, error) {
 	}
 
 	if !client.IsConnected() {
-		_ = client.Connect()
+		_ = cm.connectWithRetry(client)
 		if !client.IsConnected() {
 			return nil, fmt.Errorf("client %s is not connected", jid)
 		}
@@ -455,6 +482,57 @@ func durationFromEnvSeconds(key string, fallbackSeconds int) time.Duration {
 		return time.Duration(fallbackSeconds) * time.Second
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func durationFromEnvMilliseconds(key string, fallbackMilliseconds int) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return time.Duration(fallbackMilliseconds) * time.Millisecond
+	}
+	milliseconds, err := strconv.Atoi(raw)
+	if err != nil || milliseconds < 0 {
+		return time.Duration(fallbackMilliseconds) * time.Millisecond
+	}
+	return time.Duration(milliseconds) * time.Millisecond
+}
+
+func (cm *ClientManager) connectWithRetry(client *whatsmeow.Client) error {
+	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
+	var lastErr error
+	for attempt := 0; attempt <= len(backoff); attempt++ {
+		if client.IsConnected() {
+			return nil
+		}
+		err := client.Connect()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if isFatalConnectError(err) || attempt == len(backoff) {
+			break
+		}
+		time.Sleep(backoff[attempt])
+	}
+	return lastErr
+}
+
+func isFatalConnectError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "logged out") || strings.Contains(msg, "device_removed") || strings.Contains(msg, "unofficial app")
+}
+
+func (cm *ClientManager) IsConnected(jid string) bool {
+	cm.mu.RLock()
+	client, ok := cm.clients[jid]
+	cm.mu.RUnlock()
+	return ok && client != nil && client.IsConnected()
+}
+
+func (cm *ClientManager) SendDelay() time.Duration {
+	return cm.sendDelay
 }
 
 func cloneGroupInfos(in []GroupInfo) []GroupInfo {

@@ -108,6 +108,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init WA manager: %v", err)
 	}
+	waMgr.SetLogoutHandler(func(user string, reason string) {
+		if current := sqliteStore.GetWANumber(); current == user {
+			if err := sqliteStore.UpdateWANumber(""); err != nil {
+				log.Printf("Warning: failed to clear logged out WA number %s: %v", user, err)
+			}
+		}
+		if err := sqliteStore.UpdateWALogoutReason(reason); err != nil {
+			log.Printf("Warning: failed to save WA logout reason for %s: %v", user, err)
+		}
+	})
 
 	loadAllWAClients := strings.EqualFold(os.Getenv("WA_LOAD_ALL_CLIENTS"), "true")
 	if loadAllWAClients {
@@ -159,6 +169,7 @@ func main() {
 			r.Use(authMiddleware)
 
 			r.Get("/wa/status", api.GetWAStatus)
+			r.Get("/wa/health", api.GetWAHealth)
 			r.Get("/wa/qr", api.GetQR)
 			r.Get("/wa/pair", api.GetPairCode)
 			r.Delete("/wa", api.UnlinkWA)

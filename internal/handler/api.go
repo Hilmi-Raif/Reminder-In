@@ -310,7 +310,12 @@ func (h *APIHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandler) GetWAStatus(w http.ResponseWriter, r *http.Request) {
 	waNumber := h.Store.GetWANumber()
+	logoutReason := h.Store.GetWALogoutReason()
 	if waNumber == "" {
+		if logoutReason != "" {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out", "reason": logoutReason})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "not_linked"})
 		return
 	}
@@ -322,6 +327,20 @@ func (h *APIHandler) GetWAStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "connected", "number": waNumber})
+}
+
+func (h *APIHandler) GetWAHealth(w http.ResponseWriter, r *http.Request) {
+	waNumber := h.Store.GetWANumber()
+	logoutReason := h.Store.GetWALogoutReason()
+	connected := false
+	if waNumber != "" {
+		connected = h.WaMgr.IsConnected(waNumber)
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"number":        waNumber,
+		"connected":     connected,
+		"logout_reason": logoutReason,
+	})
 }
 
 func (h *APIHandler) UnlinkWA(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +355,7 @@ func (h *APIHandler) UnlinkWA(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to unlink whatsapp", http.StatusInternalServerError)
 		return
 	}
+	_ = h.Store.ClearWALogoutReason()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -398,6 +418,7 @@ func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
 					sendSSE(w, flusher, map[string]string{"type": "error", "message": "failed to save linked number"})
 					return
 				}
+				_ = h.Store.ClearWALogoutReason()
 				h.WaMgr.AddClient(client)
 				linked = true
 				sendSSE(w, flusher, map[string]string{"type": "success", "number": waNumber})
@@ -475,6 +496,7 @@ func (h *APIHandler) GetPairCode(w http.ResponseWriter, r *http.Request) {
 					sendSSE(w, flusher, map[string]string{"type": "error", "message": "failed to save linked number"})
 					return
 				}
+				_ = h.Store.ClearWALogoutReason()
 				h.WaMgr.AddClient(client)
 				linked = true
 				sendSSE(w, flusher, map[string]string{"type": "success", "number": waNumber})

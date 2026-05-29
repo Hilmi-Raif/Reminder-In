@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/rand"
 	"reminderin/internal/store"
 	"reminderin/internal/whatsapp"
 	"sync/atomic"
@@ -29,13 +30,18 @@ func NewScheduler(store *store.SQLiteStore, waMgr *whatsapp.ClientManager) *Sche
 func (s *Scheduler) Start() {
 	_, err := s.cron.AddFunc("*/30 * * * * *", s.processReminders)
 	if err != nil {
-		log.Printf("Error scheduling: %v", err)
+		log.Printf("Error scheduling reminders: %v", err)
 		return
 	}
 
-	_, err = s.cron.AddFunc("0 0 * * *", s.keepAliveClients) 
+	_, err = s.cron.AddFunc("0 */30 * * * *", s.keepAliveClients)
 	if err != nil {
 		log.Printf("Error scheduling keep-alive: %v", err)
+	}
+
+	_, err = s.cron.AddFunc("0 */5 * * * *", s.checkWAHealth)
+	if err != nil {
+		log.Printf("Error scheduling WA health check: %v", err)
 	}
 
 	s.cron.Start()
@@ -72,7 +78,7 @@ func (s *Scheduler) processReminders() {
 		var lastErr error
 		failed := 0
 		dispatchAt := time.Now()
-		for _, target := range targets {
+		for i, target := range targets {
 			sent, err := s.store.HasTargetDispatchMark(rem.ID, rem.ScheduledAt, target)
 			if err != nil {
 				log.Printf("Failed to read dispatch mark for reminder %s target %s: %v", rem.ID, target, err)
@@ -96,12 +102,14 @@ func (s *Scheduler) processReminders() {
 			}
 
 			log.Printf("WA Reminder %s sent successfully to %s", rem.ID, target)
+			if delay := randomSendDelay(s.waMgr.SendDelay()); delay > 0 && i < len(targets)-1 {
+				time.Sleep(delay)
+			}
 		}
 
 		if failed > 0 {
 			log.Printf("WA Reminder %s had partial delivery failure: %d/%d failed (error: %v)", rem.ID, failed, len(targets), lastErr)
-			
-			
+
 		}
 
 		if rem.Recurrence != "" {
@@ -119,14 +127,36 @@ func (s *Scheduler) keepAliveClients() {
 
 	client, err := s.waMgr.GetClient(waNumber)
 	if err != nil || client == nil || !client.IsConnected() {
-		return
+		if err := s.waMgr.LoadClient(waNumber); err != nil {
+			log.Printf("Failed to reconnect WA client %s before keep-alive: %v", waNumber, err)
+			return
+		}
 	}
 
-	
 	err = s.waMgr.SendPresence(waNumber)
 	if err != nil {
 		log.Printf("Failed to send presence keep-alive for %s: %v", waNumber, err)
 	} else {
 		log.Printf("Presence keep-alive sent for %s", waNumber)
 	}
+}
+
+func (s *Scheduler) checkWAHealth() {
+	waNumber := s.store.GetWANumber()
+	if waNumber == "" {
+		return
+	}
+	if s.waMgr.IsConnected(waNumber) {
+		return
+	}
+	if err := s.waMgr.LoadClient(waNumber); err != nil {
+		log.Printf("WA health reconnect failed for %s: %v", waNumber, err)
+	}
+}
+
+func randomSendDelay(base time.Duration) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	return base + time.Duration(rand.Int63n(int64(base)+1))
 }

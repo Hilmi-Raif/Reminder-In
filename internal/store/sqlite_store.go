@@ -119,23 +119,52 @@ func (s *SQLiteStore) Close() error {
 }
 
 func (s *SQLiteStore) GetWANumber() string {
+	return s.GetSetting("wa_number")
+}
+
+func (s *SQLiteStore) UpdateWANumber(number string) error {
+	return s.SetSetting("wa_number", number)
+}
+
+func (s *SQLiteStore) GetSetting(key string) string {
 	var val string
-	err := s.db.QueryRow("SELECT value FROM settings WHERE key = 'wa_number'").Scan(&val)
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&val)
 	if err != nil {
 		return ""
 	}
 	return val
 }
 
-func (s *SQLiteStore) UpdateWANumber(number string) error {
+func (s *SQLiteStore) SetSetting(key, value string) error {
 	_, err := s.db.Exec(
-		"INSERT INTO settings (key, value) VALUES ('wa_number', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-		number,
+		"INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+		key,
+		value,
 	)
 	if err == nil {
 		s.bumpVersion()
 	}
 	return err
+}
+
+func (s *SQLiteStore) DeleteSetting(key string) error {
+	_, err := s.db.Exec("DELETE FROM settings WHERE key = ?", key)
+	if err == nil {
+		s.bumpVersion()
+	}
+	return err
+}
+
+func (s *SQLiteStore) GetWALogoutReason() string {
+	return s.GetSetting("wa_logout_reason")
+}
+
+func (s *SQLiteStore) UpdateWALogoutReason(reason string) error {
+	return s.SetSetting("wa_logout_reason", reason)
+}
+
+func (s *SQLiteStore) ClearWALogoutReason() error {
+	return s.DeleteSetting("wa_logout_reason")
 }
 
 func (s *SQLiteStore) CreateReminder(r Reminder) error {
