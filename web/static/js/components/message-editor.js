@@ -45,6 +45,11 @@ export function createLiteEditor(containerId) {
     ) {
       content.innerHTML = "";
     }
+    const block = content.closest(".message-block") || content.closest(".form-section");
+    if (block) {
+      const errEl = block.querySelector(".field-error");
+      if (errEl) errEl.textContent = "";
+    }
   });
 
   wrapper.appendChild(toolbar);
@@ -79,6 +84,7 @@ export function initMessageEditor() {
       block.innerHTML = `
         <label for="message-${globals.messageCount}"><span data-i18n="messageLabel">${t("messageLabel")}</span> ${currentBlocks + 1}:</label>
         <div id="message-container-${globals.messageCount}"></div>
+        <span id="sf-msg-error-${globals.messageCount}" class="field-error message-block-error"></span>
         <button type="button" class="remove-message-btn" data-i18n="removeMessage">${t("removeMessage")}</button>
     `;
       messageList.appendChild(block);

@@ -1,5 +1,7 @@
 const translations = {
   en: {
+    toastClose: "Close",
+
     darkMode: "Dark Mode",
     lightMode: "Light Mode",
 
@@ -25,6 +27,8 @@ const translations = {
     waNotConnected: "Not connected",
     waConnected: "Connected to:",
     waDisconnect: "Disconnect",
+    waTabQR: "Scan QR",
+    waTabPhone: "Use Phone",
     waScanQR: "Scan QR Code",
     waOrPairWith: "OR pair with:",
     waGetCode: "Get Code",
@@ -32,10 +36,13 @@ const translations = {
     waPairInstruction:
       'Enter this pairing code in the "Link Device" screen of your WhatsApp app:',
     waEnterPhone: "Enter phone number with country code",
+    waInvalidPhone: "Invalid phone number format. Must be 8-20 digits.",
     waLinked: "WhatsApp connected:",
     waConnectionLost: "Connection to WhatsApp service lost",
     waUnlinked: "WhatsApp disconnected",
     waUnlinkFailed: "Failed to disconnect",
+    waDisconnectTitle: "Disconnect WhatsApp?",
+    waDisconnectMessage: "You will need to scan the QR code again to reconnect.",
 
     scheduleReminder: "Schedule Reminder",
     messageLabel: "Message",
@@ -51,7 +58,7 @@ const translations = {
     targetHint: "Leave empty to send to yourself.",
     recurrence: "Recurrence:",
     cronPlaceholder: "Cron expression (e.g. */30 * * * *)",
-    scheduleBtn: "Save",
+    scheduleBtn: "Schedule!",
 
     reminderList: "Your Reminders",
     searchPlaceholder: "Search messages...",
@@ -103,6 +110,9 @@ const translations = {
     editNotFound: "Reminder data not found",
     editFailed: "Failed:",
     editNetError: "Network error occurred",
+    editMessageRequired: "Message is required",
+    editCronRequired: "Recurrence is required",
+    editLoading: "Saving...",
 
     waNotLinked: "Connect WhatsApp first!",
     enterMessage: "Enter at least 1 message",
@@ -110,9 +120,18 @@ const translations = {
     scheduled: "reminders scheduled!",
     partialFail: "Some failed. Succeeded:",
     toggleFailed: "Failed to change status",
+    statusActive: "Reminder activated",
+    statusInactive: "Reminder deactivated",
+    invalidTarget: "Invalid target",
+    deleting: "Deleting...",
 
     invalidFormat:
       "Invalid format. Use numbers without symbols (e.g. 62812...) or Group ID.",
+    invalidCronFormat: "Invalid cron expression (e.g. */30 * * * *)",
+    messageEmpty: "Message cannot be empty",
+    messageTooLong: "Message cannot exceed 4000 characters",
+    targetNotAdded: "Press the 'Add' button to enter target WhatsApp number",
+    targetFormatError: "Invalid WhatsApp target format",
     alreadyAdded: "Already added",
     noGroupsFound: "No groups found",
     noContactsFound: "No contacts found",
@@ -126,6 +145,8 @@ const translations = {
     copyright: "© 2026 ReminderIn. All Rights Reserved.",
   },
   id: {
+    toastClose: "Tutup",
+
     darkMode: "Mode Gelap",
     lightMode: "Mode Terang",
 
@@ -151,6 +172,8 @@ const translations = {
     waNotConnected: "Belum terhubung",
     waConnected: "Tersambung ke:",
     waDisconnect: "Putuskan Koneksi",
+    waTabQR: "Pindai QR",
+    waTabPhone: "Gunakan Telepon",
     waScanQR: "Scan Kode QR",
     waOrPairWith: "ATAU pasangkan dengan:",
     waGetCode: "Dapatkan Kode",
@@ -158,10 +181,13 @@ const translations = {
     waPairInstruction:
       'Masukkan Kode Pemasangan ini di layar "Tautkan Perangkat" aplikasi WhatsApp Anda:',
     waEnterPhone: "Masukkan nomor telepon dengan kode negara",
+    waInvalidPhone: "Format nomor telepon tidak valid. Harus 8-20 digit.",
     waLinked: "WhatsApp tersambung:",
     waConnectionLost: "Koneksi ke layanan WhatsApp terputus",
     waUnlinked: "WhatsApp diputuskan",
     waUnlinkFailed: "Gagal memutuskan",
+    waDisconnectTitle: "Putuskan WhatsApp?",
+    waDisconnectMessage: "Anda harus scan kode QR lagi untuk menyambungkan kembali.",
 
     scheduleReminder: "Jadwalkan Pengingat",
     messageLabel: "Pesan",
@@ -177,7 +203,7 @@ const translations = {
     targetHint: "Kosongkan untuk kirim ke diri sendiri.",
     recurrence: "Pengulangan:",
     cronPlaceholder: "Cron expression (misal: */30 * * * *)",
-    scheduleBtn: "Simpan",
+    scheduleBtn: "Jadwalkan!",
 
     reminderList: "Daftar Pengingat Anda",
     searchPlaceholder: "Cari pesan...",
@@ -230,6 +256,9 @@ const translations = {
     editNotFound: "Data pengingat tidak ditemukan",
     editFailed: "Gagal:",
     editNetError: "Terjadi kesalahan jaringan",
+    editMessageRequired: "Pesan wajib diisi",
+    editCronRequired: "Pengulangan wajib diisi",
+    editLoading: "Menyimpan...",
 
     waNotLinked: "Sambungkan WhatsApp terlebih dahulu!",
     enterMessage: "Masukkan setidaknya 1 pesan",
@@ -237,9 +266,18 @@ const translations = {
     scheduled: "pengingat dijadwalkan!",
     partialFail: "Beberapa gagal. Berhasil:",
     toggleFailed: "Gagal mengubah status",
+    statusActive: "Pengingat diaktifkan",
+    statusInactive: "Pengingat dinonaktifkan",
+    invalidTarget: "Target tidak valid",
+    deleting: "Menghapus...",
 
     invalidFormat:
       "Format tidak valid. Gunakan angka tanpa simbol (contoh: 62812...) atau ID Grup.",
+    invalidCronFormat: "Format cron tidak valid (contoh: */30 * * * *)",
+    messageEmpty: "Pesan tidak boleh kosong",
+    messageTooLong: "Pesan maksimal 4000 karakter",
+    targetNotAdded: "Tekan tombol 'Tambah' untuk memasukkan nomor target",
+    targetFormatError: "Format nomor WA tidak valid",
     alreadyAdded: "Sudah ditambahkan",
     noGroupsFound: "Tidak ada grup ditemukan",
     noContactsFound: "Tidak ada kontak ditemukan",

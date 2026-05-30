@@ -11,6 +11,9 @@ const targetChips = document.getElementById("target-chips");
 const editAddTargetBtn = document.getElementById("edit-add-target-btn");
 const editTargetInput = document.getElementById("edit-target-input");
 
+const sfTargetError = document.getElementById("sf-target-error");
+const emTargetError = document.getElementById("em-target-error");
+
 export function renderTargetChips() {
   if (!targetChips) return;
   targetChips.innerHTML = "";
@@ -49,16 +52,17 @@ export function renderEditTargetChips() {
 export function initTargetChips() {
   if (addTargetBtn)
     addTargetBtn.addEventListener("click", () => {
+      if (sfTargetError) sfTargetError.textContent = "";
       const val = targetWaInput.value.trim();
       if (!val) return;
 
       if (!isValidWaFormat(val)) {
-        showMsg(t("invalidFormat"), true);
+        if (sfTargetError) sfTargetError.textContent = t("targetFormatError");
         return;
       }
 
       if (globals.targetNumbers.includes(val)) {
-        showMsg(t("alreadyAdded"), true);
+        if (sfTargetError) sfTargetError.textContent = t("alreadyAdded");
         return;
       }
       globals.targetNumbers.push(val);
@@ -67,31 +71,37 @@ export function initTargetChips() {
       targetWaInput.focus();
     });
 
-  if (targetWaInput)
+  if (targetWaInput) {
     targetWaInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         addTargetBtn.click();
       }
     });
+    targetWaInput.addEventListener("input", () => {
+      if (sfTargetError) sfTargetError.textContent = "";
+    });
+  }
 
   window.removeTarget = (idx) => {
     globals.targetNumbers.splice(idx, 1);
     renderTargetChips();
+    if (sfTargetError) sfTargetError.textContent = "";
   };
 
   if (editAddTargetBtn)
     editAddTargetBtn.addEventListener("click", () => {
+      if (emTargetError) emTargetError.textContent = "";
       const val = editTargetInput.value.trim();
       if (!val) return;
 
       if (!isValidWaFormat(val)) {
-        showMsg(t("invalidFormat"), true);
+        if (emTargetError) emTargetError.textContent = t("targetFormatError");
         return;
       }
 
       if (globals.editTargetNumbers.includes(val)) {
-        showMsg(t("alreadyAdded"), true);
+        if (emTargetError) emTargetError.textContent = t("alreadyAdded");
         return;
       }
       globals.editTargetNumbers.push(val);
@@ -100,16 +110,21 @@ export function initTargetChips() {
       editTargetInput.focus();
     });
 
-  if (editTargetInput)
+  if (editTargetInput) {
     editTargetInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         editAddTargetBtn.click();
       }
     });
+    editTargetInput.addEventListener("input", () => {
+      if (emTargetError) emTargetError.textContent = "";
+    });
+  }
 
   window.removeEditTarget = (idx) => {
     globals.editTargetNumbers.splice(idx, 1);
     renderEditTargetChips();
+    if (emTargetError) emTargetError.textContent = "";
   };
 }

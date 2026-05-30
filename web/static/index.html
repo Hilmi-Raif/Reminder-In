@@ -97,27 +97,34 @@
             
             <button id="unlink-wa-btn" hidden style="margin-bottom: 16px; width: 100%;" data-i18n="waDisconnect">Disconnect</button>
             <div id="wa-link-actions" style="display: flex; flex-direction: column; gap: 16px;">
-              <button id="link-wa-qr-btn" data-i18n="waScanQR" style="width: 100%;">Scan QR Code</button>
-
-              <div id="qr-container" hidden style="text-align: center; border: 3px solid var(--neo-border); border-radius: var(--neo-radius-sm); padding: 16px; background: var(--surface-1); box-shadow: var(--neo-shadow-sm);">
-                <p data-i18n="waScanInstruction" style="margin-top: 0;">Scan this QR code with your WhatsApp app:</p>
-                <img id="qr-img" src="" alt="QR Code" style="width: 100%; max-width: 250px; height: auto;" />
-              </div>
-              
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <hr style="display: block; flex: 1; border: none; border-top: 2px dashed color-mix(in srgb, var(--text-color) 30%, transparent); margin: 0;">
-                <span data-i18n="waOrPairWith" style="font-weight: 700; font-size: 0.9em; opacity: 0.7;">OR PAIR WITH</span>
-                <hr style="display: block; flex: 1; border: none; border-top: 2px dashed color-mix(in srgb, var(--text-color) 30%, transparent); margin: 0;">
+              <!-- Tab Navigation -->
+              <div class="tabs" style="margin-bottom: 8px;">
+                <button id="tab-qr" type="button" class="tab-btn active" data-i18n="waTabQR">Scan QR</button>
+                <button id="tab-phone" type="button" class="tab-btn" data-i18n="waTabPhone">Use Phone</button>
               </div>
 
-              <div style="display: flex; gap: 8px;">
-                <input type="text" id="wa-phone" data-i18n-placeholder="waPhonePlaceholder" placeholder="+1234567890..." style="flex: 1;" />
-                <button id="link-wa-phone-btn" data-i18n="waGetCode">Get Code</button>
+              <!-- QR Code View -->
+              <div id="view-qr" class="tab-content active">
+                <button id="link-wa-qr-btn" data-i18n="waScanQR" style="width: 100%;">Scan QR Code</button>
+
+                <div id="qr-container" hidden style="text-align: center; border: 3px solid var(--neo-border); border-radius: var(--neo-radius-sm); padding: 16px; background: var(--surface-1); box-shadow: var(--neo-shadow-sm);">
+                  <p data-i18n="waScanInstruction" style="margin-top: 0;">Scan this QR code with your WhatsApp app:</p>
+                  <img id="qr-img" src="" alt="QR Code" style="width: 100%; max-width: 250px; height: auto;" />
+                </div>
               </div>
 
-              <div id="code-container" hidden style="text-align: center; border: 3px solid var(--neo-border); border-radius: var(--neo-radius-sm); padding: 16px; background: var(--surface-1); box-shadow: var(--neo-shadow-sm);">
-                <p data-i18n="waPairInstruction" style="margin-top: 0;">Enter this pairing code in the "Link Device" screen of your WhatsApp app:</p>
-                <h2 id="pair-code-display" style="letter-spacing: 5px; margin-bottom: 0;"></h2>
+              <!-- Phone Pairing View -->
+              <div id="view-phone" class="tab-content">
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="wa-phone" data-i18n-placeholder="waPhonePlaceholder" placeholder="+1234567890..." style="flex: 1;" />
+                  <button id="link-wa-phone-btn" data-i18n="waGetCode">Get Code</button>
+                </div>
+                <span id="wa-phone-error" class="field-error"></span>
+
+                <div id="code-container" hidden style="text-align: center; border: 3px solid var(--neo-border); border-radius: var(--neo-radius-sm); padding: 16px; background: var(--surface-1); box-shadow: var(--neo-shadow-sm);">
+                  <p data-i18n="waPairInstruction" style="margin-top: 0;">Enter this pairing code in the "Link Device" screen of your WhatsApp app:</p>
+                  <h2 id="pair-code-display"></h2>
+                </div>
               </div>
             </div>
           </div>
@@ -132,6 +139,7 @@
                 <div class="message-block">
                   <label for="message-0"><span data-i18n="messageLabel">Message</span> 1:</label>
                   <div id="message-container-0"></div>
+                  <span id="sf-msg-error-0" class="field-error message-block-error"></span>
                   <button type="button" class="remove-message-btn" style="display: none" data-i18n="removeMessage">
                     Remove This Message
                   </button>
@@ -141,6 +149,8 @@
                 + Add Another Message
               </button>
             </div>
+
+            <span id="sf-message-error" class="field-error"></span>
 
             <div class="form-section">
               <label data-i18n="targetWA">Target WhatsApp (Optional):</label>
@@ -167,10 +177,12 @@
                     margin-top: 12px;
                   "></div>
               <span class="form-hint" data-i18n="targetHint">Leave empty to send to yourself.</span>
+              <span id="sf-target-error" class="field-error"></span>
             </div>
             <div id="recurrence-section" class="form-section">
               <label for="recurrence" data-i18n="recurrence">Recurrence:</label>
               <input type="text" id="recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron expression (e.g. */30 * * * *)" required autocomplete="off" />
+              <span id="sf-recurrence-error" class="field-error"></span>
             </div>
 
             <div style="display: flex; justify-content: flex-end;">
@@ -326,6 +338,7 @@
             <div class="form-section">
               <label data-i18n="thMessage">Message:</label>
               <div id="edit-message-container" style="margin-top: 5px"></div>
+              <span id="em-message-error" class="field-error"></span>
             </div>
 
             <div class="form-section">
@@ -353,11 +366,13 @@
                     margin-top: 12px;
                   "></div>
               <span class="form-hint" data-i18n="targetHint">Leave empty to send to yourself.</span>
+              <span id="em-target-error" class="field-error"></span>
             </div>
 
             <div id="edit-recurrence-section" class="form-section">
               <label for="edit-recurrence" data-i18n="recurrence">Recurrence:</label>
               <input type="text" id="edit-recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron expression (e.g. */30 * * * *)" required autocomplete="off" />
+              <span id="em-recurrence-error" class="field-error"></span>
             </div>
 
             <div style="display: flex; justify-content: flex-end;">
@@ -380,6 +395,25 @@
         </svg>
       </button>
     </footer>
+
+    <div id="disconnect-modal" class="modal-overlay">
+      <div class="modal-box" style="max-width: 400px; text-align: center">
+        <h3 id="disconnect-modal-title" data-i18n="waDisconnectTitle">
+          Disconnect WhatsApp?
+        </h3>
+        <p id="disconnect-modal-message" data-i18n="waDisconnectMessage">
+          You will need to scan the QR code again to reconnect.
+        </p>
+        <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+          <button id="confirm-disconnect-btn" data-i18n="waDisconnect">
+            Disconnect
+          </button>
+          <button id="cancel-disconnect-btn" data-i18n="cancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
 
     <div id="toast-container" class="toast-container"></div>
   </div>

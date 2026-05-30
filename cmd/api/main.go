@@ -264,7 +264,7 @@ func loginHandler(adminUser, adminPass string, limiter *loginLimiter) http.Handl
 				writeLoginRateLimit(w, retryAfter)
 				return
 			}
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			handler.WriteError(w, http.StatusUnauthorized, "Invalid credentials", nil)
 			return
 		}
 
@@ -275,7 +275,7 @@ func loginHandler(adminUser, adminPass string, limiter *loginLimiter) http.Handl
 				writeLoginRateLimit(w, retryAfter)
 				return
 			}
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			handler.WriteError(w, http.StatusUnauthorized, "Invalid credentials", nil)
 			return
 		}
 
@@ -283,7 +283,7 @@ func loginHandler(adminUser, adminPass string, limiter *loginLimiter) http.Handl
 
 		tokenString, err := generateJWT(req.Username)
 		if err != nil {
-			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+			handler.WriteError(w, http.StatusInternalServerError, "Failed to generate token", nil)
 			return
 		}
 
@@ -333,7 +333,7 @@ func sessionCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	cookie, err := r.Cookie("token")
 	if err != nil || !validateJWT(cookie.Value) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		handler.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -344,7 +344,7 @@ func authMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		cookie, err := r.Cookie("token")
 		if err != nil || !validateJWT(cookie.Value) {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			handler.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -359,7 +359,7 @@ func sameOriginMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		if !isSameOrigin(r, origin) {
-			http.Error(w, "Forbidden origin", http.StatusForbidden)
+			handler.WriteError(w, http.StatusForbidden, "Forbidden origin", nil)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -453,15 +453,15 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst interface{}) boo
 	if err := dec.Decode(dst); err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			handler.WriteError(w, http.StatusRequestEntityTooLarge, "Request body too large", nil)
 			return false
 		}
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		handler.WriteError(w, http.StatusBadRequest, "Invalid request", nil)
 		return false
 	}
 
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		handler.WriteError(w, http.StatusBadRequest, "Invalid request", nil)
 		return false
 	}
 	return true

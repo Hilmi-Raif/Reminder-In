@@ -15,6 +15,7 @@ export const globals = {
   activeController: null,
   targetNumbers: [],
   editTargetNumbers: [],
+  editOriginalScheduledAt: null,
   groupsCache: null,
   contactsCache: null,
   messageEditors: {},

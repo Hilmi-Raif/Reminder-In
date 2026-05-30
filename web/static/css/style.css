@@ -245,6 +245,19 @@ fieldset legend {
   font-weight: 500;
 }
 
+.field-error {
+  display: block;
+  color: var(--error, #e53935);
+  font-size: 0.8rem;
+  margin-top: 5px;
+  font-weight: 700;
+  min-height: 1.2em;
+}
+
+.field-error:empty {
+  display: none;
+}
+
 input,
 textarea,
 select,
@@ -898,11 +911,17 @@ tbody tr:first-child td {
 }
 
 #pair-code-display {
-  margin: 6px 0 2px;
-  font-family: "Archivo Black", "Arial Black", sans-serif;
-  letter-spacing: 0.2em;
-  color: color-mix(in srgb, var(--text-color) 70%, #0077ff);
-  text-shadow: 2px 2px 0 color-mix(in srgb, var(--neo-border) 30%, transparent);
+  margin: 12px auto 4px;
+  padding: 12px 24px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--text-color);
+  background-color: var(--surface-2);
+  border: 2px solid var(--neo-border);
+  border-radius: var(--neo-radius-sm);
+  display: inline-block;
 }
 
 .toast-container {
@@ -1330,3 +1349,63 @@ input[type="radio"] {
   }
 
 }
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border: 3px solid var(--neo-border);
+  border-radius: var(--neo-radius-sm);
+  overflow: hidden;
+  background: var(--surface-1);
+  box-shadow: var(--neo-shadow-sm);
+}
+
+.tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  font-weight: 700;
+  padding: 10px 16px;
+  color: var(--text-color);
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  margin: 0;
+  border-right: 3px solid var(--neo-border);
+}
+
+.tab-btn:last-child {
+  border-right: none;
+}
+
+.tab-btn:hover {
+  background: color-mix(in srgb, var(--surface-2) 50%, transparent);
+  transform: none;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.tab-btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.tab-btn.active {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+  opacity: 1;
+  box-shadow: none;
+}
+
+
+.tab-content {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tab-content.active {
+  display: flex;
+}
+

@@ -18,8 +18,11 @@ export async function createReminderApi(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to create reminder");
-  return res;
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "Failed to create reminder" }));
+    throw body;
+  }
+  return res.json();
 }
 
 export async function deleteReminderApi(id) {
@@ -47,8 +50,8 @@ export async function updateReminderApi(id, payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
+    const body = await res.json().catch(() => ({ error: "Failed to update reminder" }));
+    throw body;
   }
-  return res;
+  return res.json();
 }

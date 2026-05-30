@@ -64,23 +64,23 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 
 	normalizedTargets, err := normalizeReminderTargets(req.TargetWa)
 	if err != nil {
-		http.Error(w, "Invalid target format", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid target format", map[string]string{"field": "target_wa", "detail": err.Error()})
 		return
 	}
 	req.TargetWa = normalizedTargets
 
 	if req.Message == "" {
-		http.Error(w, "Message is required", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Message is required", map[string]string{"field": "message"})
 		return
 	}
 	if len([]rune(req.Message)) > maxMessageChars {
-		http.Error(w, "Message is too long", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Message is too long", map[string]string{"field": "message"})
 		return
 	}
 
 	parsedTime, err := time.Parse(time.RFC3339, req.ScheduledAt)
 	if err != nil {
-		http.Error(w, "Invalid time format (use RFC3339)", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid time format (use RFC3339)", map[string]string{"field": "scheduled_at"})
 		return
 	}
 
@@ -100,24 +100,24 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	if req.Recurrence == "" {
 		if !parsedTime.After(now) {
-			http.Error(w, "Scheduled time must be in the future", http.StatusBadRequest)
+			WriteError(w, http.StatusBadRequest, "Scheduled time must be in the future", map[string]string{"field": "scheduled_at"})
 			return
 		}
 		rem.ScheduledAt = parsedTime
 	} else if strings.HasPrefix(req.Recurrence, "plugin:") {
-		http.Error(w, "Plugin recurrence is not supported", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Plugin recurrence is not supported", map[string]string{"field": "recurrence"})
 		return
 	} else {
 		nextRun, err := nextScheduledTime(req.Recurrence, parsedTime)
 		if err != nil {
-			http.Error(w, "Invalid cron expression", http.StatusBadRequest)
+			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
 			return
 		}
 		rem.ScheduledAt = nextRun
 	}
 
 	if err := h.Store.CreateReminder(rem); err != nil {
-		http.Error(w, "Failed to create reminder", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "Failed to create reminder", nil)
 		return
 	}
 
@@ -167,17 +167,17 @@ func (h *APIHandler) DeleteReminder(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid ID", map[string]string{"field": "id"})
 		return
 	}
 
 	err = h.Store.DeleteReminder(id)
 	if err != nil {
 		if errors.Is(err, store.ErrReminderNotFound) {
-			http.Error(w, "Reminder not found", http.StatusNotFound)
+			WriteError(w, http.StatusNotFound, "Reminder not found", nil)
 			return
 		}
-		http.Error(w, "Failed to delete reminder", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "Failed to delete reminder", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -186,7 +186,7 @@ func (h *APIHandler) DeleteReminder(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) DeleteAllReminders(w http.ResponseWriter, r *http.Request) {
 	err := h.Store.DeleteAllReminders()
 	if err != nil {
-		http.Error(w, "Failed to delete reminders", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "Failed to delete reminders", nil)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -196,7 +196,7 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid ID", map[string]string{"field": "id"})
 		return
 	}
 
@@ -211,33 +211,33 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 
 	normalizedTargets, targetErr := normalizeReminderTargets(req.TargetWa)
 	if targetErr != nil {
-		http.Error(w, "Invalid target format", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid target format", map[string]string{"field": "target_wa", "detail": targetErr.Error()})
 		return
 	}
 	req.TargetWa = normalizedTargets
 
 	if req.Message == "" {
-		http.Error(w, "Message is required", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Message is required", map[string]string{"field": "message"})
 		return
 	}
 	if len([]rune(req.Message)) > maxMessageChars {
-		http.Error(w, "Message is too long", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Message is too long", map[string]string{"field": "message"})
 		return
 	}
 
 	now := time.Now()
 	if req.Recurrence == "" {
 		if !req.ScheduledAt.After(now) {
-			http.Error(w, "Scheduled time must be in the future", http.StatusBadRequest)
+			WriteError(w, http.StatusBadRequest, "Scheduled time must be in the future", map[string]string{"field": "scheduled_at"})
 			return
 		}
 	} else if strings.HasPrefix(req.Recurrence, "plugin:") {
-		http.Error(w, "Plugin recurrence is not supported", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Plugin recurrence is not supported", map[string]string{"field": "recurrence"})
 		return
 	} else {
 		nextRun, err := nextScheduledTime(req.Recurrence, req.ScheduledAt)
 		if err != nil {
-			http.Error(w, "Invalid cron expression", http.StatusBadRequest)
+			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
 			return
 		}
 		req.ScheduledAt = nextRun
@@ -246,10 +246,10 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 	err = h.Store.UpdateReminder(id, req)
 	if err != nil {
 		if errors.Is(err, store.ErrReminderNotFound) {
-			http.Error(w, "Reminder not found", http.StatusNotFound)
+			WriteError(w, http.StatusNotFound, "Reminder not found", nil)
 			return
 		}
-		http.Error(w, "Failed to update reminder", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "Failed to update reminder", nil)
 		return
 	}
 
@@ -260,17 +260,17 @@ func (h *APIHandler) ToggleReminder(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid ID", map[string]string{"field": "id"})
 		return
 	}
 
 	err = h.Store.ToggleReminderActive(id)
 	if err != nil {
 		if errors.Is(err, store.ErrReminderNotFound) {
-			http.Error(w, "Reminder not found", http.StatusNotFound)
+			WriteError(w, http.StatusNotFound, "Reminder not found", nil)
 			return
 		}
-		http.Error(w, "Failed to toggle reminder", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "Failed to toggle reminder", nil)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -285,7 +285,7 @@ func (h *APIHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 
 	groups, err := h.WaMgr.GetJoinedGroups(waNumber)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (h *APIHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 	contacts, err := h.WaMgr.GetContacts(waNumber)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, err.Error(), nil)
 		return
 	}
 
@@ -352,7 +352,7 @@ func (h *APIHandler) UnlinkWA(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.WaMgr.Logout(waNumber)
 	if err := h.Store.UpdateWANumber(""); err != nil {
-		http.Error(w, "failed to unlink whatsapp", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "failed to unlink whatsapp", nil)
 		return
 	}
 	_ = h.Store.ClearWALogoutReason()
@@ -361,7 +361,7 @@ func (h *APIHandler) UnlinkWA(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
 	if !h.acquireLinkSlot() {
-		http.Error(w, "Too many active link sessions", http.StatusTooManyRequests)
+		WriteError(w, http.StatusTooManyRequests, "Too many active link sessions", nil)
 		return
 	}
 	defer h.releaseLinkSlot()
@@ -373,7 +373,7 @@ func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "streaming unsupported", nil)
 		return
 	}
 
@@ -433,7 +433,7 @@ func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandler) GetPairCode(w http.ResponseWriter, r *http.Request) {
 	if !h.acquireLinkSlot() {
-		http.Error(w, "Too many active link sessions", http.StatusTooManyRequests)
+		WriteError(w, http.StatusTooManyRequests, "Too many active link sessions", nil)
 		return
 	}
 	defer h.releaseLinkSlot()
@@ -445,7 +445,7 @@ func (h *APIHandler) GetPairCode(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		WriteError(w, http.StatusInternalServerError, "streaming unsupported", nil)
 		return
 	}
 
@@ -518,15 +518,15 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, dst interface{}) boo
 	if err := dec.Decode(dst); err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			WriteError(w, http.StatusRequestEntityTooLarge, "Request body too large", nil)
 			return false
 		}
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
 		return false
 	}
 
 	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		WriteError(w, http.StatusBadRequest, "Invalid request body", nil)
 		return false
 	}
 	return true

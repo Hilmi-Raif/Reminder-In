@@ -262,23 +262,29 @@ export function initTableInteractions() {
     });
 
   window.toggleReminder = async (id) => {
+    const checkbox = document.querySelector(`tr[data-id="${id}"] input[type="checkbox"]`);
+    if (checkbox) checkbox.disabled = true;
     try {
-      const res = await fetch(`/api/reminders/${id}/toggle`, {
-        method: "PATCH",
-      });
+      const res = await fetch(`/api/reminders/${id}/toggle`, { method: "PATCH" });
       if (!res.ok) {
         import("./toast.js").then((m) => m.showMsg(t("toggleFailed"), true));
         state.lastETag = null;
         loadReminders(false);
       } else {
-        state.lastETag = null;
+        const rem = state.remindersData.find((r) => r.id === id);
+        if (rem) {
+          rem.is_active = !rem.is_active;
+          import("./toast.js").then((m) =>
+            m.showMsg(rem.is_active ? t("statusActive") : t("statusInactive"))
+          );
+        }
       }
     } catch (err) {
-      import("./toast.js").then((m) =>
-        m.showMsg("Gagal mengubah status", true),
-      );
+      import("./toast.js").then((m) => m.showMsg(t("toggleFailed"), true));
       state.lastETag = null;
       loadReminders(false);
+    } finally {
+      if (checkbox) checkbox.disabled = false;
     }
   };
 }

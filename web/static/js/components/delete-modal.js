@@ -45,7 +45,7 @@ export function initDeleteModal() {
   if (confirmDeleteBtn)
     confirmDeleteBtn.addEventListener("click", async () => {
       confirmDeleteBtn.disabled = true;
-      confirmDeleteBtn.textContent = "Menghapus...";
+      confirmDeleteBtn.textContent = t("deleting");
       try {
         if (globals.deleteMode === "single") {
           if (!globals.deleteId) return;
@@ -76,7 +76,7 @@ export function initDeleteModal() {
         showMsg(t("deleteFailed"), true);
       } finally {
         confirmDeleteBtn.disabled = false;
-        confirmDeleteBtn.textContent = "Ya, Hapus";
+        confirmDeleteBtn.textContent = t("confirmDelete");
         globals.deleteId = null;
       }
     });
