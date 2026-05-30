@@ -133,7 +133,7 @@ func main() {
 		}
 	}
 
-	sched := NewScheduler(sqliteStore, waMgr)
+	sched := NewScheduler(sqliteStore, waMgr, keepaliveIntervalFromEnv())
 	sched.Start()
 	defer sched.Stop()
 

@@ -55,6 +55,9 @@ Schedule one-time or recurring reminders, then deliver them to yourself, contact
 | `WA_SEND_TIMEOUT_SECONDS` | No | `20` | Timeout for WA send operation. |
 | `WA_QUERY_TIMEOUT_SECONDS` | No | `20` | Timeout for WA directory queries. |
 | `WA_DIRECTORY_CACHE_TTL_SECONDS` | No | `60` | Cache TTL for contacts/groups lookup. |
+| `WA_LOG_LEVEL` | No | `WARN` | whatsmeow log level (DEBUG, INFO, WARN, ERROR). |
+| `WA_SEND_DELAY_MS` | No | `2000` | Randomized delay between sends to different targets (ms). |
+| `WA_KEEPALIVE_MINUTES` | No | `5` | WhatsApp presence keepalive interval (minutes). |
 | `REMINDER_DUE_BATCH_LIMIT` | No | `200` | Max due reminders processed per scheduler cycle. |
 | `ALLOW_INSECURE_DEFAULTS` | No | `false` | Development-only fallback for missing secrets/credentials. |
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"reminderin/internal/store"
@@ -9,22 +10,37 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
+	"go.mau.fi/whatsmeow/types"
 )
 
 type Scheduler struct {
-	cron    *cron.Cron
-	store   *store.SQLiteStore
-	waMgr   *whatsapp.ClientManager
-	running atomic.Bool
+	cron              *cron.Cron
+	store             *store.SQLiteStore
+	waMgr             *whatsapp.ClientManager
+	running           atomic.Bool
+	keepaliveInterval time.Duration
+	keepaliveStop     chan struct{}
+	healthStop        chan struct{}
 }
 
-func NewScheduler(store *store.SQLiteStore, waMgr *whatsapp.ClientManager) *Scheduler {
+func NewScheduler(store *store.SQLiteStore, waMgr *whatsapp.ClientManager, keepaliveInterval time.Duration) *Scheduler {
 	c := cron.New(cron.WithSeconds())
 	return &Scheduler{
-		cron:  c,
-		store: store,
-		waMgr: waMgr,
+		cron:              c,
+		store:             store,
+		waMgr:             waMgr,
+		keepaliveInterval: keepaliveInterval,
+		keepaliveStop:     make(chan struct{}),
+		healthStop:        make(chan struct{}),
 	}
+}
+
+func keepaliveIntervalFromEnv() time.Duration {
+	minutes := nonNegativeIntFromEnv("WA_KEEPALIVE_MINUTES", 5)
+	if minutes <= 0 {
+		minutes = 5
+	}
+	return time.Duration(minutes) * time.Minute
 }
 
 func (s *Scheduler) Start() {
@@ -34,22 +50,16 @@ func (s *Scheduler) Start() {
 		return
 	}
 
-	_, err = s.cron.AddFunc("0 */30 * * * *", s.keepAliveClients)
-	if err != nil {
-		log.Printf("Error scheduling keep-alive: %v", err)
-	}
-
-	_, err = s.cron.AddFunc("0 */5 * * * *", s.checkWAHealth)
-	if err != nil {
-		log.Printf("Error scheduling WA health check: %v", err)
-	}
-
 	s.cron.Start()
+	go s.keepaliveLoop()
+	go s.healthCheckLoop()
 
-	log.Println("Scheduler Service started (checking every 30s)...")
+	log.Printf("Scheduler started (reminders: 30s, keepalive: %v, health: 5m)", s.keepaliveInterval)
 }
 
 func (s *Scheduler) Stop() {
+	close(s.keepaliveStop)
+	close(s.healthStop)
 	s.cron.Stop()
 }
 
@@ -119,7 +129,24 @@ func (s *Scheduler) processReminders() {
 	})
 }
 
-func (s *Scheduler) keepAliveClients() {
+func (s *Scheduler) keepaliveLoop() {
+	if s.keepaliveInterval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(s.keepaliveInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.sendKeepalive()
+		case <-s.keepaliveStop:
+			return
+		}
+	}
+}
+
+func (s *Scheduler) sendKeepalive() {
 	waNumber := s.store.GetWANumber()
 	if waNumber == "" {
 		return
@@ -127,17 +154,31 @@ func (s *Scheduler) keepAliveClients() {
 
 	client, err := s.waMgr.GetClient(waNumber)
 	if err != nil || client == nil || !client.IsConnected() {
-		if err := s.waMgr.LoadClient(waNumber); err != nil {
-			log.Printf("Failed to reconnect WA client %s before keep-alive: %v", waNumber, err)
-			return
-		}
+		log.Printf("Keepalive: WA client %s not connected (auto-reconnect should handle it)", waNumber)
+		return
 	}
 
-	err = s.waMgr.SendPresence(waNumber)
-	if err != nil {
-		log.Printf("Failed to send presence keep-alive for %s: %v", waNumber, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := client.SendPresence(ctx, types.PresenceAvailable); err != nil {
+		log.Printf("Keepalive: failed to send presence for %s: %v", waNumber, err)
 	} else {
-		log.Printf("Presence keep-alive sent for %s", waNumber)
+		log.Printf("Keepalive: presence sent for %s", waNumber)
+	}
+}
+
+func (s *Scheduler) healthCheckLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.checkWAHealth()
+		case <-s.healthStop:
+			return
+		}
 	}
 }
 
@@ -149,9 +190,7 @@ func (s *Scheduler) checkWAHealth() {
 	if s.waMgr.IsConnected(waNumber) {
 		return
 	}
-	if err := s.waMgr.LoadClient(waNumber); err != nil {
-		log.Printf("WA health reconnect failed for %s: %v", waNumber, err)
-	}
+	log.Printf("WA health: client %s is disconnected (auto-reconnect should handle it)", waNumber)
 }
 
 func randomSendDelay(base time.Duration) time.Duration {

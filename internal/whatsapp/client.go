@@ -109,6 +109,11 @@ func (cm *ClientManager) GetClient(jid string) (*whatsmeow.Client, error) {
 func (cm *ClientManager) GetNewAuthClient() *whatsmeow.Client {
 	deviceStore := cm.container.NewDevice()
 	client := whatsmeow.NewClient(deviceStore, cm.log)
+	client.EnableAutoReconnect = true
+	client.AutoReconnectHook = func(err error) bool {
+		cm.log.Warnf("Auto-reconnect failed (auth client): %v", err)
+		return !isFatalConnectError(err)
+	}
 	cm.setupEventHandler(client)
 	return client
 }
@@ -116,6 +121,10 @@ func (cm *ClientManager) GetNewAuthClient() *whatsmeow.Client {
 func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 	client.AddEventHandler(func(evt interface{}) {
 		switch e := evt.(type) {
+		case *events.Connected:
+			if client.Store.ID != nil {
+				cm.log.Infof("Client %s connected to WhatsApp", client.Store.ID.User)
+			}
 		case *events.LoggedOut:
 			if client.Store.ID == nil {
 				return
@@ -125,6 +134,25 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 			cm.removeClient(user)
 			cm.log.Warnf("Client %s logged out: %s", user, reason)
 			cm.notifyLogout(user, reason)
+		case *events.KeepAliveTimeout:
+			if client.Store.ID != nil {
+				cm.log.Warnf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
+			}
+		case *events.KeepAliveRestored:
+			if client.Store.ID != nil {
+				cm.log.Infof("Client %s keepalive restored", client.Store.ID.User)
+			}
+		case *events.StreamReplaced:
+			if client.Store.ID != nil {
+				user := client.Store.ID.User
+				cm.log.Warnf("Client %s stream replaced (another device connected with same session)", user)
+				cm.removeClient(user)
+				cm.notifyLogout(user, "stream_replaced")
+			}
+		case *events.TemporaryBan:
+			if client.Store.ID != nil {
+				cm.log.Errorf("Client %s temporarily banned: %s", client.Store.ID.User, e.String())
+			}
 		}
 	})
 }
@@ -154,6 +182,23 @@ func (cm *ClientManager) LoadAllClients() error {
 
 	for _, device := range devices {
 		client := whatsmeow.NewClient(device, cm.log)
+		client.EnableAutoReconnect = true
+		client.InitialAutoReconnect = true
+		client.AutoReconnectHook = func(err error) bool {
+			if device.ID == nil {
+				cm.log.Warnf("Auto-reconnect failed for unknown client: %v", err)
+				return !isFatalConnectError(err)
+			}
+			user := device.ID.User
+			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
+			if isFatalConnectError(err) {
+				cm.log.Errorf("Fatal reconnect error for %s, removing client: %v", user, err)
+				cm.removeClient(user)
+				cm.notifyLogout(user, err.Error())
+				return false
+			}
+			return true
+		}
 		cm.setupEventHandler(client)
 		if device.ID != nil {
 			cm.mu.Lock()
@@ -192,6 +237,18 @@ func (cm *ClientManager) LoadClient(user string) error {
 		}
 
 		client := whatsmeow.NewClient(device, cm.log)
+		client.EnableAutoReconnect = true
+		client.InitialAutoReconnect = true
+		client.AutoReconnectHook = func(err error) bool {
+			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
+			if isFatalConnectError(err) {
+				cm.log.Errorf("Fatal reconnect error for %s, removing client: %v", user, err)
+				cm.removeClient(user)
+				cm.notifyLogout(user, err.Error())
+				return false
+			}
+			return true
+		}
 		cm.setupEventHandler(client)
 		cm.mu.Lock()
 		cm.clients[user] = client
@@ -221,10 +278,7 @@ func (cm *ClientManager) SendMessage(jid string, target string, message string) 
 	}
 
 	if !client.IsConnected() {
-		_ = cm.connectWithRetry(client)
-		if !client.IsConnected() {
-			return fmt.Errorf("client %s is not connected", jid)
-		}
+		return fmt.Errorf("client %s is not connected", jid)
 	}
 
 	if !strings.Contains(target, "@") {
@@ -274,10 +328,7 @@ func (cm *ClientManager) SendPresence(jid string) error {
 	}
 
 	if !client.IsConnected() {
-		_ = cm.connectWithRetry(client)
-		if !client.IsConnected() {
-			return fmt.Errorf("client %s is not connected", jid)
-		}
+		return fmt.Errorf("client %s is not connected", jid)
 	}
 
 	ctx := context.Background()
@@ -327,10 +378,7 @@ func (cm *ClientManager) GetJoinedGroups(jid string) ([]GroupInfo, error) {
 	}
 
 	if !client.IsConnected() {
-		_ = cm.connectWithRetry(client)
-		if !client.IsConnected() {
-			return nil, fmt.Errorf("client %s is not connected", jid)
-		}
+		return nil, fmt.Errorf("client %s is not connected", jid)
 	}
 
 	now := time.Now()
@@ -387,7 +435,7 @@ func (cm *ClientManager) GetContacts(jid string) ([]ContactInfo, error) {
 	}
 
 	if !client.IsConnected() {
-		cm.log.Warnf("Client %s is not connected, attempting to fetch contacts from local store", jid)
+		cm.log.Warnf("Client %s is not connected, contacts from local store may be stale", jid)
 	}
 
 	now := time.Now()
