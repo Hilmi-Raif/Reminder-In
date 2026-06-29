@@ -1,4 +1,4 @@
-# ReminderIn
+# Reminder-In
 
 <p align="center">
   <a href="https://github.com/user-attachments/assets/f1de9410-6120-4454-93e2-81b89fd596f1">
@@ -67,7 +67,7 @@ Schedule one-time or recurring reminders, then deliver them to yourself, contact
 
 ```bash
 git clone <your-repo-url>
-cd Reminderin
+cd Reminder-In
 ```
 
 2. Create env file:

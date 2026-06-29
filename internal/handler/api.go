@@ -310,12 +310,7 @@ func (h *APIHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 
 func (h *APIHandler) GetWAStatus(w http.ResponseWriter, r *http.Request) {
 	waNumber := h.Store.GetWANumber()
-	logoutReason := h.Store.GetWALogoutReason()
 	if waNumber == "" {
-		if logoutReason != "" {
-			writeJSON(w, http.StatusOK, map[string]string{"status": "logged_out", "reason": logoutReason})
-			return
-		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "not_linked"})
 		return
 	}
@@ -357,6 +352,18 @@ func (h *APIHandler) UnlinkWA(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = h.Store.ClearWALogoutReason()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *APIHandler) replaceLinkedWANumber(newNumber string) error {
+	oldNumber := h.Store.GetWANumber()
+	if err := h.Store.UpdateWANumber(newNumber); err != nil {
+		return err
+	}
+	_ = h.Store.ClearWALogoutReason()
+	if oldNumber != "" && oldNumber != newNumber {
+		_ = h.WaMgr.Logout(oldNumber)
+	}
+	return nil
 }
 
 func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
@@ -414,11 +421,10 @@ func (h *APIHandler) GetQR(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				waNumber := client.Store.ID.User
-				if err := h.Store.UpdateWANumber(waNumber); err != nil {
+				if err := h.replaceLinkedWANumber(waNumber); err != nil {
 					sendSSE(w, flusher, map[string]string{"type": "error", "message": "failed to save linked number"})
 					return
 				}
-				_ = h.Store.ClearWALogoutReason()
 				h.WaMgr.AddClient(client)
 				linked = true
 				sendSSE(w, flusher, map[string]string{"type": "success", "number": waNumber})
@@ -492,11 +498,10 @@ func (h *APIHandler) GetPairCode(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				waNumber := client.Store.ID.User
-				if err := h.Store.UpdateWANumber(waNumber); err != nil {
+				if err := h.replaceLinkedWANumber(waNumber); err != nil {
 					sendSSE(w, flusher, map[string]string{"type": "error", "message": "failed to save linked number"})
 					return
 				}
-				_ = h.Store.ClearWALogoutReason()
 				h.WaMgr.AddClient(client)
 				linked = true
 				sendSSE(w, flusher, map[string]string{"type": "success", "number": waNumber})

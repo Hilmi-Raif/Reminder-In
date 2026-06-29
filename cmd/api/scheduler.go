@@ -76,6 +76,9 @@ func (s *Scheduler) processReminders() {
 
 	client, err := s.waMgr.GetClient(waNumber)
 	if err != nil || client == nil || !client.IsConnected() {
+		if ensureErr := s.waMgr.EnsureClient(waNumber); ensureErr != nil {
+			log.Printf("Reminder WA recovery: failed to reload client %s: %v", waNumber, ensureErr)
+		}
 		return
 	}
 
@@ -154,7 +157,11 @@ func (s *Scheduler) sendKeepalive() {
 
 	client, err := s.waMgr.GetClient(waNumber)
 	if err != nil || client == nil || !client.IsConnected() {
-		log.Printf("Keepalive: WA client %s not connected (auto-reconnect should handle it)", waNumber)
+		if ensureErr := s.waMgr.EnsureClient(waNumber); ensureErr != nil {
+			log.Printf("Keepalive: WA client %s not connected and reload failed: %v", waNumber, ensureErr)
+		} else {
+			log.Printf("Keepalive: WA client %s not connected, recovery checked", waNumber)
+		}
 		return
 	}
 
@@ -190,7 +197,11 @@ func (s *Scheduler) checkWAHealth() {
 	if s.waMgr.IsConnected(waNumber) {
 		return
 	}
-	log.Printf("WA health: client %s is disconnected (auto-reconnect should handle it)", waNumber)
+	if err := s.waMgr.EnsureClient(waNumber); err != nil {
+		log.Printf("WA health: client %s is disconnected and reload failed: %v", waNumber, err)
+		return
+	}
+	log.Printf("WA health: client %s is disconnected, recovery checked", waNumber)
 }
 
 func randomSendDelay(base time.Duration) time.Duration {

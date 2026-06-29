@@ -31,7 +31,6 @@ type ClientManager struct {
 	queryTimeout  time.Duration
 	cacheTTL      time.Duration
 	sendDelay     time.Duration
-	onLogout      func(user string, reason string)
 	groupsCache   map[string]groupCacheEntry
 	contactsCache map[string]contactCacheEntry
 }
@@ -89,12 +88,6 @@ func NewClientManager() (*ClientManager, error) {
 	}, nil
 }
 
-func (cm *ClientManager) SetLogoutHandler(fn func(user string, reason string)) {
-	cm.mu.Lock()
-	cm.onLogout = fn
-	cm.mu.Unlock()
-}
-
 func (cm *ClientManager) GetClient(jid string) (*whatsmeow.Client, error) {
 	cm.mu.RLock()
 	client, ok := cm.clients[jid]
@@ -131,9 +124,7 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 			}
 			user := client.Store.ID.User
 			reason := fmt.Sprintf("OnConnect=%v Reason=%v", e.OnConnect, e.Reason)
-			cm.removeClient(user)
-			cm.log.Warnf("Client %s logged out: %s", user, reason)
-			cm.notifyLogout(user, reason)
+			cm.handleRuntimeDisconnect(user, "logged out: "+reason, true)
 		case *events.KeepAliveTimeout:
 			if client.Store.ID != nil {
 				cm.log.Warnf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
@@ -145,9 +136,7 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 		case *events.StreamReplaced:
 			if client.Store.ID != nil {
 				user := client.Store.ID.User
-				cm.log.Warnf("Client %s stream replaced (another device connected with same session)", user)
-				cm.removeClient(user)
-				cm.notifyLogout(user, "stream_replaced")
+				cm.handleRuntimeDisconnect(user, "stream replaced (another device connected with same session)", true)
 			}
 		case *events.TemporaryBan:
 			if client.Store.ID != nil {
@@ -165,13 +154,11 @@ func (cm *ClientManager) removeClient(user string) {
 	cm.mu.Unlock()
 }
 
-func (cm *ClientManager) notifyLogout(user string, reason string) {
-	cm.mu.RLock()
-	handler := cm.onLogout
-	cm.mu.RUnlock()
-	if handler != nil {
-		handler(user, reason)
+func (cm *ClientManager) handleRuntimeDisconnect(user string, reason string, remove bool) {
+	if remove {
+		cm.removeClient(user)
 	}
+	cm.log.Warnf("Client %s runtime disconnected: %s", user, reason)
 }
 
 func (cm *ClientManager) LoadAllClients() error {
@@ -192,9 +179,7 @@ func (cm *ClientManager) LoadAllClients() error {
 			user := device.ID.User
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isFatalConnectError(err) {
-				cm.log.Errorf("Fatal reconnect error for %s, removing client: %v", user, err)
-				cm.removeClient(user)
-				cm.notifyLogout(user, err.Error())
+				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
 				return false
 			}
 			return true
@@ -210,8 +195,7 @@ func (cm *ClientManager) LoadAllClients() error {
 		if err := cm.connectWithRetry(client); err != nil {
 			if device.ID != nil && isFatalConnectError(err) {
 				user := device.ID.User
-				cm.removeClient(user)
-				cm.notifyLogout(user, err.Error())
+				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true)
 			}
 			continue
 		}
@@ -242,9 +226,7 @@ func (cm *ClientManager) LoadClient(user string) error {
 		client.AutoReconnectHook = func(err error) bool {
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isFatalConnectError(err) {
-				cm.log.Errorf("Fatal reconnect error for %s, removing client: %v", user, err)
-				cm.removeClient(user)
-				cm.notifyLogout(user, err.Error())
+				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
 				return false
 			}
 			return true
@@ -258,8 +240,7 @@ func (cm *ClientManager) LoadClient(user string) error {
 
 		if err := cm.connectWithRetry(client); err != nil {
 			if isFatalConnectError(err) {
-				cm.removeClient(user)
-				cm.notifyLogout(user, err.Error())
+				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true)
 			}
 			return err
 		}
@@ -267,6 +248,23 @@ func (cm *ClientManager) LoadClient(user string) error {
 	}
 
 	return fmt.Errorf("client session not found for %s", user)
+}
+
+func (cm *ClientManager) EnsureClient(user string) error {
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return nil
+	}
+
+	cm.mu.RLock()
+	client, ok := cm.clients[user]
+	cm.mu.RUnlock()
+	if ok && client != nil {
+		return nil
+	}
+
+	cm.log.Warnf("Client %s missing from runtime map, reloading stored WhatsApp session", user)
+	return cm.LoadClient(user)
 }
 
 func (cm *ClientManager) SendMessage(jid string, target string, message string) error {
