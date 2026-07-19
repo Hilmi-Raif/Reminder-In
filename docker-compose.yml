@@ -1,0 +1,27 @@
+services:
+  reminderin:
+    image: ghcr.io/scrkiddie/reminderin:latest
+    container_name: reminderin-app
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /app/reminderin/data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DB_PATH=/app/data/reminderin.db
+      - TZ=Asia/Jakarta
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: reminderin-updater
+    restart: unless-stopped
+    command: --interval 1800 --cleanup --label-enable reminderin-app
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

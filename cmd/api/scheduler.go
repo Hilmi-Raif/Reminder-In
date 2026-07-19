@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"reminderin/internal/store"
@@ -44,22 +45,22 @@ func keepaliveIntervalFromEnv() time.Duration {
 }
 
 func (s *Scheduler) Start() {
-	_, err := s.cron.AddFunc("*/30 * * * * *", s.processReminders)
+	_, err := s.cron.AddFunc("0 * * * * *", s.processReminders)
 	if err != nil {
 		log.Printf("Error scheduling reminders: %v", err)
 		return
 	}
 
 	s.cron.Start()
-	go s.keepaliveLoop()
 	go s.healthCheckLoop()
+	go s.smartKeepaliveLoop()
 
-	log.Printf("Scheduler started (reminders: 30s, keepalive: %v, health: 5m)", s.keepaliveInterval)
+	log.Printf("Scheduler started (reminders: 1m, health: 5m, smart-keepalive: active)")
 }
 
 func (s *Scheduler) Stop() {
-	close(s.keepaliveStop)
 	close(s.healthStop)
+	close(s.keepaliveStop)
 	s.cron.Stop()
 }
 
@@ -68,6 +69,10 @@ func (s *Scheduler) processReminders() {
 		return
 	}
 	defer s.running.Store(false)
+
+	// Add Jitter (0-15 seconds) so it doesn't trigger exactly on the minute
+	jitter := time.Duration(rand.Intn(16)) * time.Second
+	time.Sleep(jitter)
 
 	waNumber := s.store.GetWANumber()
 	if waNumber == "" {
@@ -115,14 +120,17 @@ func (s *Scheduler) processReminders() {
 			}
 
 			log.Printf("WA Reminder %s sent successfully to %s", rem.ID, target)
+
+			// Larger more human-like delay between messages (base + 3-8 seconds)
 			if delay := randomSendDelay(s.waMgr.SendDelay()); delay > 0 && i < len(targets)-1 {
-				time.Sleep(delay)
+				extraDelay := time.Duration(rand.Intn(6)+3) * time.Second
+				time.Sleep(delay + extraDelay)
 			}
 		}
 
 		if failed > 0 {
 			log.Printf("WA Reminder %s had partial delivery failure: %d/%d failed (error: %v)", rem.ID, failed, len(targets), lastErr)
-
+			return reminderDeliveryError(failed, lastErr)
 		}
 
 		if rem.Recurrence != "" {
@@ -132,46 +140,93 @@ func (s *Scheduler) processReminders() {
 	})
 }
 
-func (s *Scheduler) keepaliveLoop() {
-	if s.keepaliveInterval <= 0 {
+func reminderDeliveryError(failed int, lastErr error) error {
+	if failed <= 0 {
+		return nil
+	}
+	if lastErr == nil {
+		return fmt.Errorf("%d reminder target deliveries failed", failed)
+	}
+	return fmt.Errorf("%d reminder target deliveries failed: %w", failed, lastErr)
+}
+
+func (s *Scheduler) smartKeepaliveLoop() {
+	// Tunggu 5-15 menit pertama kali saat startup agar tidak langsung ping
+	startupJitter := time.Duration(rand.Intn(10)+5) * time.Minute
+
+	startupTimer := time.NewTimer(startupJitter)
+	select {
+	case <-startupTimer.C:
+	case <-s.keepaliveStop:
+		startupTimer.Stop()
 		return
 	}
-	ticker := time.NewTicker(s.keepaliveInterval)
-	defer ticker.Stop()
 
 	for {
+		s.checkAndSendSmartKeepalive()
+
+		// Sleep untuk 20 - 28 jam (harian acak)
+		dailyJitter := time.Duration(rand.Intn(8)+20) * time.Hour
+		timer := time.NewTimer(dailyJitter)
 		select {
-		case <-ticker.C:
-			s.sendKeepalive()
+		case <-timer.C:
 		case <-s.keepaliveStop:
+			timer.Stop()
 			return
 		}
 	}
 }
 
-func (s *Scheduler) sendKeepalive() {
+func (s *Scheduler) checkAndSendSmartKeepalive() {
 	waNumber := s.store.GetWANumber()
 	if waNumber == "" {
 		return
 	}
 
-	client, err := s.waMgr.GetClient(waNumber)
-	if err != nil || client == nil || !client.IsConnected() {
-		if ensureErr := s.waMgr.EnsureClient(waNumber); ensureErr != nil {
-			log.Printf("Keepalive: WA client %s not connected and reload failed: %v", waNumber, ensureErr)
-		} else {
-			log.Printf("Keepalive: WA client %s not connected, recovery checked", waNumber)
+	lastPingStr := s.store.GetSetting("wa_last_keepalive_time")
+	var lastPing time.Time
+
+	if lastPingStr != "" {
+		parsed, err := time.Parse(time.RFC3339, lastPingStr)
+		if err == nil {
+			lastPing = parsed
 		}
-		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Tentukan durasi target ping berikutnya (antara 5-9 hari)
+	// Kita ambil 7 hari sebagai base (168 jam) dan beri jitter -2 s/d +2 hari
+	targetDuration := time.Duration(120+rand.Intn(96)) * time.Hour
 
-	if err := client.SendPresence(ctx, types.PresenceAvailable); err != nil {
-		log.Printf("Keepalive: failed to send presence for %s: %v", waNumber, err)
+	// Jika ini ping pertama (lastPing kosong) ATAU sudah melewati targetDuration
+	if lastPing.IsZero() || time.Since(lastPing) >= targetDuration {
+		client, err := s.waMgr.GetClient(waNumber)
+		if err == nil && client != nil && client.IsConnected() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			log.Printf("Smart Keepalive: Mengirim status PresenceAvailable (Online) sementara")
+
+			// Send Online
+			if err := client.SendPresence(ctx, types.PresenceAvailable); err != nil {
+				log.Printf("Smart Keepalive failed to send presence: %v", err)
+				return // Gagal, coba lagi di cycle berikutnya tanpa update waktu
+			}
+
+			// Tahan online sebentar (15 - 45 detik) layaknya orang cek WA
+			time.Sleep(time.Duration(rand.Intn(30)+15) * time.Second)
+
+			// Send Offline
+			_ = client.SendPresence(context.Background(), types.PresenceUnavailable)
+
+			// Simpan waktu berhasil
+			if err := s.store.SetSetting("wa_last_keepalive_time", time.Now().Format(time.RFC3339)); err != nil {
+				log.Printf("Smart Keepalive failed to save state: %v", err)
+			} else {
+				log.Printf("Smart Keepalive berhasil. Menyimpan state untuk siklus berikutnya.")
+			}
+		}
 	} else {
-		log.Printf("Keepalive: presence sent for %s", waNumber)
+		log.Printf("Smart Keepalive: Belum waktunya. Waktu tersisa: %v", targetDuration-time.Since(lastPing))
 	}
 }
 

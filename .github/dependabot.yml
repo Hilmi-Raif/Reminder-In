@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: daily
+      time: "03:00"
+      timezone: Asia/Jakarta
+    open-pull-requests-limit: 5
+    groups:
+      whatsmeow-stack:
+        patterns:
+          - "go.mau.fi/whatsmeow"
+          - "go.mau.fi/libsignal"
+          - "go.mau.fi/util"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "03:00"
+      timezone: Asia/Jakarta

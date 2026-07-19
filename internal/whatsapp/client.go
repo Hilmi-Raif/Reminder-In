@@ -105,6 +105,10 @@ func (cm *ClientManager) GetNewAuthClient() *whatsmeow.Client {
 	client.EnableAutoReconnect = true
 	client.AutoReconnectHook = func(err error) bool {
 		cm.log.Warnf("Auto-reconnect failed (auth client): %v", err)
+		if isClientOutdatedConnectError(err) {
+			cm.log.Errorf("Auth client hit 405 ClientOutdated; stopping reconnect until deployment is updated")
+			return false
+		}
 		return !isFatalConnectError(err)
 	}
 	cm.setupEventHandler(client)
@@ -125,6 +129,13 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 			user := client.Store.ID.User
 			reason := fmt.Sprintf("OnConnect=%v Reason=%v", e.OnConnect, e.Reason)
 			cm.handleRuntimeDisconnect(user, "logged out: "+reason, true)
+		case *events.ClientOutdated:
+			if client.Store.ID != nil {
+				user := client.Store.ID.User
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+			} else {
+				cm.log.Errorf("Auth client outdated (405); update whatsmeow and rebuild the deployment image")
+			}
 		case *events.KeepAliveTimeout:
 			if client.Store.ID != nil {
 				cm.log.Warnf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
@@ -174,10 +185,18 @@ func (cm *ClientManager) LoadAllClients() error {
 		client.AutoReconnectHook = func(err error) bool {
 			if device.ID == nil {
 				cm.log.Warnf("Auto-reconnect failed for unknown client: %v", err)
+				if isClientOutdatedConnectError(err) {
+					cm.log.Errorf("Unknown client hit 405 ClientOutdated; stopping reconnect until deployment is updated")
+					return false
+				}
 				return !isFatalConnectError(err)
 			}
 			user := device.ID.User
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
+			if isClientOutdatedConnectError(err) {
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+				return false
+			}
 			if isFatalConnectError(err) {
 				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
 				return false
@@ -225,6 +244,10 @@ func (cm *ClientManager) LoadClient(user string) error {
 		client.InitialAutoReconnect = true
 		client.AutoReconnectHook = func(err error) bool {
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
+			if isClientOutdatedConnectError(err) {
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+				return false
+			}
 			if isFatalConnectError(err) {
 				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
 				return false
@@ -303,7 +326,24 @@ func (cm *ClientManager) SendMessage(jid string, target string, message string) 
 		defer cancel()
 	}
 
+	typingCtx, typingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	_ = client.SendChatPresence(typingCtx, targetJID, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+	typingCancel()
+
+	typingDurationSec := len(message) / 25
+	if typingDurationSec < 2 {
+		typingDurationSec = 2
+	} else if typingDurationSec > 8 {
+		typingDurationSec = 8
+	}
+	time.Sleep(time.Duration(typingDurationSec) * time.Second)
+
 	_, err = client.SendMessage(ctx, targetJID, msg)
+
+	availCtx, availCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	_ = client.SendPresence(availCtx, types.PresenceAvailable)
+	availCancel()
+
 	return err
 }
 
@@ -554,7 +594,7 @@ func (cm *ClientManager) connectWithRetry(client *whatsmeow.Client) error {
 			return nil
 		}
 		lastErr = err
-		if isFatalConnectError(err) || attempt == len(backoff) {
+		if isClientOutdatedConnectError(err) || isFatalConnectError(err) || attempt == len(backoff) {
 			break
 		}
 		time.Sleep(backoff[attempt])
@@ -562,8 +602,19 @@ func (cm *ClientManager) connectWithRetry(client *whatsmeow.Client) error {
 	return lastErr
 }
 
+func isClientOutdatedConnectError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "405") || strings.Contains(msg, "client outdated") || strings.Contains(msg, "client is out of date")
+}
+
 func isFatalConnectError(err error) bool {
 	if err == nil {
+		return false
+	}
+	if isClientOutdatedConnectError(err) {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
