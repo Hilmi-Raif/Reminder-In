@@ -80,6 +80,7 @@ function buildRowCellsHTML(rem) {
   const isRecurring = recurrence !== "";
   const isExpired = !isRecurring && new Date(rem.scheduled_at) < new Date();
   const toggleDisabled = isExpired;
+  const scheduledDisplay = rem.is_active ? formatHumanDate(rem.scheduled_at) : "-";
 
   return `
     <td data-label="${t("thMessage")}">
@@ -89,7 +90,7 @@ function buildRowCellsHTML(rem) {
         <div style="max-height: 120px; overflow-y: auto; overflow-wrap: break-word; font-size: 0.95em; white-space: pre-wrap;">${escapeHtml(rem.target_wa ? rem.target_wa.split(",").join(", ") : t("yourself"))}</div>
     </td>
     <td data-label="${t("thNextTime")}">
-        <div style="font-weight: 500;">${escapeHtml(formatHumanDate(rem.scheduled_at))}</div>
+        <div style="font-weight: 500;">${escapeHtml(scheduledDisplay)}</div>
     </td>
     <td data-label="${t("thRecurrence")}">
         <div style="font-weight: 500;">${escapeHtml(recurrence)}</div>
@@ -270,19 +271,17 @@ export function initTableInteractions() {
     const checkbox = document.querySelector(`tr[data-id="${id}"] input[type="checkbox"]`);
     if (checkbox) checkbox.disabled = true;
     try {
-      const res = await fetch(`/api/reminders/${id}/toggle`, { method: "PATCH" });
-      if (!res.ok) {
-        import("./toast.js").then((m) => m.showMsg(t("toggleFailed"), true));
-        state.lastETag = null;
-        loadReminders(false);
-      } else {
-        const rem = state.remindersData.find((r) => r.id === id);
-        if (rem) {
-          rem.is_active = !rem.is_active;
-          import("./toast.js").then((m) =>
-            m.showMsg(rem.is_active ? t("statusActive") : t("statusInactive"))
-          );
-        }
+      const remData = await fetch(`/api/reminders/${id}/toggle`, { method: "PATCH" }).then(res => {
+        if (!res.ok) throw new Error("Failed");
+        return res.json();
+      });
+      const idx = state.remindersData.findIndex((r) => r.id === id);
+      if (idx !== -1) {
+        state.remindersData[idx] = remData;
+        import("./toast.js").then((m) =>
+          m.showMsg(remData.is_active ? t("statusActive") : t("statusInactive"))
+        );
+        rerenderRemindersLocale();
       }
     } catch (err) {
       import("./toast.js").then((m) => m.showMsg(t("toggleFailed"), true));

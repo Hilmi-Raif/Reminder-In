@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -81,5 +82,105 @@ func TestProcessDueRemindersSkipsCorruptRows(t *testing.T) {
 
 	if called {
 		t.Fatal("expected corrupt reminders to be skipped")
+	}
+}
+
+func TestToggleReminderActiveDisablesActiveReminder(t *testing.T) {
+	s := newTestSQLiteStore(t)
+	id := uuid.Must(uuid.NewV7())
+	scheduledAt := time.Now().Add(time.Hour).Truncate(time.Second)
+
+	if err := s.CreateReminder(Reminder{
+		ID:          id,
+		Message:     "test recurring reminder",
+		TargetWa:    "6281234567890",
+		Recurrence:  "* * * * *",
+		ScheduledAt: scheduledAt,
+		IsActive:    true,
+	}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+
+	if _, err := s.ToggleReminderActive(id); err != nil {
+		t.Fatalf("toggle reminder: %v", err)
+	}
+
+	reminders, _, _ := s.GetReminders(nil, 10, "", "time", "asc")
+	if len(reminders) != 1 {
+		t.Fatalf("expected 1 reminder, got %d", len(reminders))
+	}
+	if reminders[0].IsActive {
+		t.Fatal("expected reminder to be inactive")
+	}
+	if !reminders[0].ScheduledAt.Equal(scheduledAt) {
+		t.Fatalf("expected scheduled_at to stay %s, got %s", scheduledAt, reminders[0].ScheduledAt)
+	}
+}
+
+func TestToggleReminderActiveRecalculatesWhenEnablingRecurring(t *testing.T) {
+	s := newTestSQLiteStore(t)
+	id := uuid.Must(uuid.NewV7())
+	staleTime := time.Date(2027, 7, 6, 0, 0, 0, 0, time.UTC)
+
+	if err := s.CreateReminder(Reminder{
+		ID:          id,
+		Message:     "test recurring reminder",
+		TargetWa:    "6281234567890",
+		Recurrence:  "* * * * *",
+		ScheduledAt: staleTime,
+		IsActive:    false,
+	}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+
+	before := time.Now()
+	if _, err := s.ToggleReminderActive(id); err != nil {
+		t.Fatalf("toggle reminder: %v", err)
+	}
+
+	reminders, _, _ := s.GetReminders(nil, 10, "", "time", "asc")
+	if len(reminders) != 1 {
+		t.Fatalf("expected 1 reminder, got %d", len(reminders))
+	}
+	if !reminders[0].IsActive {
+		t.Fatal("expected reminder to be active")
+	}
+	if !reminders[0].ScheduledAt.After(before) {
+		t.Fatalf("expected recalculated scheduled_at after test start, got %s", reminders[0].ScheduledAt)
+	}
+	if reminders[0].ScheduledAt.After(before.Add(2 * time.Minute)) {
+		t.Fatalf("expected scheduled_at to be recalculated from now, got %s", reminders[0].ScheduledAt)
+	}
+}
+
+func TestToggleReminderActiveRejectsInvalidRecurrenceWhenEnabling(t *testing.T) {
+	s := newTestSQLiteStore(t)
+	id := uuid.Must(uuid.NewV7())
+	staleTime := time.Date(2027, 7, 6, 0, 0, 0, 0, time.UTC)
+
+	if err := s.CreateReminder(Reminder{
+		ID:          id,
+		Message:     "test recurring reminder",
+		TargetWa:    "6281234567890",
+		Recurrence:  "not a cron",
+		ScheduledAt: staleTime,
+		IsActive:    false,
+	}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+
+	if _, err := s.ToggleReminderActive(id); !errors.Is(err, ErrInvalidRecurrence) {
+		t.Fatalf("expected ErrInvalidRecurrence, got %v", err)
+	}
+
+	reminders, _, _ := s.GetReminders(nil, 10, "", "time", "asc")
+	if len(reminders) != 1 {
+		t.Fatalf("expected 1 reminder, got %d", len(reminders))
+	}
+	if reminders[0].IsActive {
+		t.Fatal("expected reminder to remain inactive")
+	}
+	if !reminders[0].ScheduledAt.Equal(staleTime) {
+		t.Fatalf("expected scheduled_at to stay %s, got %s", staleTime, reminders[0].ScheduledAt)
 	}
 }

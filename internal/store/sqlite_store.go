@@ -28,6 +28,7 @@ type Reminder struct {
 }
 
 var ErrReminderNotFound = errors.New("reminder not found")
+var ErrInvalidRecurrence = errors.New("invalid recurrence")
 
 type SQLiteStore struct {
 	db          *sql.DB
@@ -216,17 +217,46 @@ func (s *SQLiteStore) DeleteAllReminders() error {
 	return err
 }
 
-func (s *SQLiteStore) ToggleReminderActive(id uuid.UUID) error {
-	res, err := s.db.Exec("UPDATE reminders SET is_active = NOT is_active WHERE id = ?", id.String())
-	if err != nil {
-		return err
+func (s *SQLiteStore) ToggleReminderActive(id uuid.UUID) (Reminder, error) {
+	var active int
+	var recurrence string
+	if err := s.db.QueryRow("SELECT is_active, recurrence FROM reminders WHERE id = ?", id.String()).Scan(&active, &recurrence); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Reminder{}, ErrReminderNotFound
+		}
+		return Reminder{}, err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		return ErrReminderNotFound
+
+	if active != 0 {
+		res, err := s.db.Exec("UPDATE reminders SET is_active = 0 WHERE id = ? AND is_active = 1", id.String())
+		if err != nil {
+			return Reminder{}, err
+		}
+		if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+			return Reminder{}, ErrReminderNotFound
+		}
+		s.bumpVersion()
+		return s.GetReminder(id)
+	}
+
+	recurrence = strings.TrimSpace(recurrence)
+	if recurrence == "" {
+		return Reminder{}, ErrInvalidRecurrence
+	}
+	sched, err := dueReminderCronParser.Parse(recurrence)
+	if err != nil {
+		return Reminder{}, ErrInvalidRecurrence
+	}
+	next := sched.Next(time.Now())
+	res, err := s.db.Exec("UPDATE reminders SET is_active = 1, scheduled_at = ? WHERE id = ? AND is_active = 0", next, id.String())
+	if err != nil {
+		return Reminder{}, err
+	}
+	if n, rowsErr := res.RowsAffected(); rowsErr == nil && n == 0 {
+		return Reminder{}, ErrReminderNotFound
 	}
 	s.bumpVersion()
-	return nil
+	return s.GetReminder(id)
 }
 
 func (s *SQLiteStore) GetReminders(cursor *uuid.UUID, limit int, search, sortBy, order string) ([]Reminder, string, int) {
@@ -339,6 +369,26 @@ func (s *SQLiteStore) GetReminders(cursor *uuid.UUID, limit int, search, sortBy,
 	}
 
 	return result, nextCursor, total
+}
+
+func (s *SQLiteStore) GetReminder(id uuid.UUID) (Reminder, error) {
+	var r Reminder
+	var idStr, scheduledAt string
+	var active int
+	err := s.db.QueryRow(
+		"SELECT id, message, target_wa, recurrence, scheduled_at, is_active FROM reminders WHERE id = ?",
+		id.String(),
+	).Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Reminder{}, ErrReminderNotFound
+		}
+		return Reminder{}, err
+	}
+	r.ID, _ = uuid.Parse(idStr)
+	r.IsActive = active != 0
+	r.ScheduledAt, _ = parseReminderTime(scheduledAt)
+	return r, nil
 }
 
 func (s *SQLiteStore) Version() uint64 {

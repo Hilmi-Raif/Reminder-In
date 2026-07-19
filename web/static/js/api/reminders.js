@@ -40,7 +40,7 @@ export async function deleteAllRemindersApi() {
 export async function toggleReminderApi(id) {
   const res = await fetch(`/api/reminders/${id}/toggle`, { method: "PATCH" });
   if (!res.ok) throw new Error("Failed to toggle reminder");
-  return res;
+  return res.json();
 }
 
 export async function updateReminderApi(id, payload) {

@@ -263,16 +263,20 @@ func (h *APIHandler) ToggleReminder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.Store.ToggleReminderActive(id)
+	rem, err := h.Store.ToggleReminderActive(id)
 	if err != nil {
 		if errors.Is(err, store.ErrReminderNotFound) {
 			WriteError(w, http.StatusNotFound, "Reminder not found", nil)
 			return
 		}
+		if errors.Is(err, store.ErrInvalidRecurrence) {
+			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
+			return
+		}
 		WriteError(w, http.StatusInternalServerError, "Failed to toggle reminder", nil)
 		return
 	}
-	w.WriteHeader(http.StatusOK)
+	writeJSON(w, http.StatusOK, rem)
 }
 
 func (h *APIHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
