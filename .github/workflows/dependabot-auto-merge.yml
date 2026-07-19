@@ -1,0 +1,56 @@
+name: Dependabot Auto Merge
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+jobs:
+  whatsmeow:
+    if: github.actor == 'dependabot[bot]' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto merge for clean WhatsMeow updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh pr view "$PR_URL" --json title,body,mergeStateStatus)"
+          title="$(jq -r '.title // ""' <<< "$pr_json")"
+          body="$(jq -r '.body // ""' <<< "$pr_json")"
+          text="$(printf '%s\n%s' "$title" "$body" | tr '[:upper:]' '[:lower:]')"
+
+          if ! grep -Eq 'whatsmeow-stack|go\.mau\.fi/(whatsmeow|libsignal|util)' <<< "$text"; then
+            echo "Not a WhatsMeow dependency PR. Skipping."
+            exit 0
+          fi
+
+          merge_state="UNKNOWN"
+          for _ in {1..6}; do
+            merge_state="$(gh pr view "$PR_URL" --json mergeStateStatus --jq '.mergeStateStatus')"
+            if [ "$merge_state" != "UNKNOWN" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ "$merge_state" != "CLEAN" ]; then
+            echo "PR merge state is $merge_state. Not enabling auto-merge."
+            exit 0
+          fi
+
+          if ! gh pr merge "$PR_URL" --auto --squash --delete-branch; then
+            echo "Could not enable auto-merge. Check repository auto-merge settings and branch protection."
+            exit 0
+          fi
