@@ -2,6 +2,8 @@ import { t, currentLang } from "../i18n/lang.js";
 
 export function formatHumanDate(isoString) {
   const date = new Date(isoString);
+  if (!isoString || Number.isNaN(date.getTime())) return "-";
+
   const now = new Date();
 
   const dDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());

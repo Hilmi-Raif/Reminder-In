@@ -49,10 +49,9 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Message     string `json:"message"`
-		TargetWa    string `json:"target_wa"`
-		Recurrence  string `json:"recurrence"`
-		ScheduledAt string `json:"scheduled_at"`
+		Message    string `json:"message"`
+		TargetWa   string `json:"target_wa"`
+		Recurrence string `json:"recurrence"`
 	}
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -78,12 +77,6 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parsedTime, err := time.Parse(time.RFC3339, req.ScheduledAt)
-	if err != nil {
-		WriteError(w, http.StatusBadRequest, "Invalid time format (use RFC3339)", map[string]string{"field": "scheduled_at"})
-		return
-	}
-
 	target := req.TargetWa
 	if target == "" {
 		target = h.Store.GetWANumber()
@@ -99,16 +92,13 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	if req.Recurrence == "" {
-		if !parsedTime.After(now) {
-			WriteError(w, http.StatusBadRequest, "Scheduled time must be in the future", map[string]string{"field": "scheduled_at"})
-			return
-		}
-		rem.ScheduledAt = parsedTime
+		WriteError(w, http.StatusBadRequest, "Recurrence is required", map[string]string{"field": "recurrence"})
+		return
 	} else if strings.HasPrefix(req.Recurrence, "plugin:") {
 		WriteError(w, http.StatusBadRequest, "Plugin recurrence is not supported", map[string]string{"field": "recurrence"})
 		return
 	} else {
-		nextRun, err := nextScheduledTime(req.Recurrence, parsedTime)
+		nextRun, err := nextScheduledTime(req.Recurrence, now)
 		if err != nil {
 			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
 			return
@@ -200,7 +190,11 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req store.Reminder
+	var req struct {
+		Message    string `json:"message"`
+		TargetWa   string `json:"target_wa"`
+		Recurrence string `json:"recurrence"`
+	}
 	if !decodeJSONBody(w, r, &req) {
 		return
 	}
@@ -227,33 +221,38 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	if req.Recurrence == "" {
-		if !req.ScheduledAt.After(now) {
-			WriteError(w, http.StatusBadRequest, "Scheduled time must be in the future", map[string]string{"field": "scheduled_at"})
-			return
-		}
+		WriteError(w, http.StatusBadRequest, "Recurrence is required", map[string]string{"field": "recurrence"})
+		return
 	} else if strings.HasPrefix(req.Recurrence, "plugin:") {
 		WriteError(w, http.StatusBadRequest, "Plugin recurrence is not supported", map[string]string{"field": "recurrence"})
 		return
 	} else {
-		nextRun, err := nextScheduledTime(req.Recurrence, req.ScheduledAt)
+		nextRun, err := nextScheduledTime(req.Recurrence, now)
 		if err != nil {
 			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
 			return
 		}
-		req.ScheduledAt = nextRun
-	}
+		updated := store.Reminder{
+			Message:     req.Message,
+			TargetWa:    req.TargetWa,
+			Recurrence:  req.Recurrence,
+			ScheduledAt: nextRun,
+			IsActive:    true,
+		}
 
-	err = h.Store.UpdateReminder(id, req)
-	if err != nil {
-		if errors.Is(err, store.ErrReminderNotFound) {
-			WriteError(w, http.StatusNotFound, "Reminder not found", nil)
+		err = h.Store.UpdateReminder(id, updated)
+		if err != nil {
+			if errors.Is(err, store.ErrReminderNotFound) {
+				WriteError(w, http.StatusNotFound, "Reminder not found", nil)
+				return
+			}
+			WriteError(w, http.StatusInternalServerError, "Failed to update reminder", nil)
 			return
 		}
-		WriteError(w, http.StatusInternalServerError, "Failed to update reminder", nil)
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
 func (h *APIHandler) ToggleReminder(w http.ResponseWriter, r *http.Request) {
@@ -542,15 +541,7 @@ func nextScheduledTime(recurrence string, requested time.Time) (time.Time, error
 	if err != nil {
 		return time.Time{}, err
 	}
-	base := time.Now()
-	if requested.After(base) {
-
-		if sched.Next(requested.Add(-time.Second)).Equal(requested) {
-			return requested, nil
-		}
-		base = requested
-	}
-	return sched.Next(base), nil
+	return sched.Next(requested), nil
 }
 
 func normalizePhone(input string) string {

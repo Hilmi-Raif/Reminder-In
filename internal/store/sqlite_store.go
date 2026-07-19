@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -315,9 +316,19 @@ func (s *SQLiteStore) GetReminders(cursor *uuid.UUID, limit int, search, sortBy,
 		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active); err != nil {
 			continue
 		}
-		r.ID, _ = uuid.Parse(idStr)
+		parsedID, err := uuid.Parse(idStr)
+		if err != nil {
+			log.Printf("Skipping reminder with invalid UUID %q: %v", idStr, err)
+			continue
+		}
+		parsedTime, err := parseReminderTime(scheduledAt)
+		if err != nil {
+			log.Printf("Skipping reminder %s with invalid scheduled_at %q: %v", idStr, scheduledAt, err)
+			continue
+		}
+		r.ID = parsedID
 		r.IsActive = active != 0
-		r.ScheduledAt = parseReminderTime(scheduledAt)
+		r.ScheduledAt = parsedTime
 		result = append(result, r)
 	}
 
@@ -364,8 +375,18 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt); err != nil {
 			continue
 		}
-		r.ID, _ = uuid.Parse(idStr)
-		r.ScheduledAt = parseReminderTime(scheduledAt)
+		parsedID, err := uuid.Parse(idStr)
+		if err != nil {
+			log.Printf("Skipping due reminder with invalid UUID %q: %v", idStr, err)
+			continue
+		}
+		parsedTime, err := parseReminderTime(scheduledAt)
+		if err != nil {
+			log.Printf("Skipping due reminder %s with invalid scheduled_at %q: %v", idStr, scheduledAt, err)
+			continue
+		}
+		r.ID = parsedID
+		r.ScheduledAt = parsedTime
 		due = append(due, dueReminder{id: idStr, rem: r})
 	}
 
@@ -645,17 +666,31 @@ func (s *SQLiteStore) putCachedTotal(search string, version uint64, total int) {
 	}
 }
 
-func parseReminderTime(value string) time.Time {
-	t, _ := time.Parse(time.RFC3339Nano, value)
-	if !t.IsZero() {
-		return t
+func parseReminderTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, fmt.Errorf("empty time")
 	}
-	t, _ = time.Parse("2006-01-02 15:04:05-07:00", value)
-	if !t.IsZero() {
-		return t
+
+	formats := []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
 	}
-	t, _ = time.Parse("2006-01-02 15:04:05", value)
-	return t
+	var lastErr error
+	for _, format := range formats {
+		parsed, err := time.Parse(format, value)
+		if err == nil && !parsed.IsZero() && parsed.Year() >= 1970 {
+			return parsed, nil
+		}
+		if err != nil {
+			lastErr = err
+		}
+	}
+	if lastErr != nil {
+		return time.Time{}, lastErr
+	}
+	return time.Time{}, fmt.Errorf("invalid time")
 }
 
 func ParseTargets(targetWa string) []string {

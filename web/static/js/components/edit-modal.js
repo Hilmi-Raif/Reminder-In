@@ -56,7 +56,6 @@ export function initEditModal() {
     document.getElementById("edit-target-input").value = "";
 
     editRecurrenceInput.value = (rem.recurrence || "").trim();
-    globals.editOriginalScheduledAt = rem.scheduled_at;
 
     editModal.classList.add("active");
     document.body.style.overflow = "hidden";
@@ -116,14 +115,10 @@ export function initEditModal() {
         btn.disabled = true;
         btn.textContent = t("editLoading");
 
-        const scheduledAt = globals.editOriginalScheduledAt || new Date().toISOString();
-
         const payload = {
-          id: id,
           message: message,
           target_wa: targetWa,
           recurrence,
-          scheduled_at: scheduledAt,
         };
 
         await updateReminderApi(id, payload);
@@ -144,8 +139,6 @@ export function initEditModal() {
             setEditFieldError(emTargetError, reason);
           } else if (field === "message") {
             setEditFieldError(emMessageError, reason);
-          } else if (field === "scheduled_at") {
-            setEditFieldError(emRecurrenceError, reason);
           }
         } else {
           showMsg(reason, true);

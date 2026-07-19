@@ -59,6 +59,13 @@ func TestNewSchedulerStoresKeepaliveInterval(t *testing.T) {
 	}
 }
 
+func TestSchedulerStopIsIdempotent(t *testing.T) {
+	scheduler := NewScheduler(nil, nil, time.Minute)
+
+	scheduler.Stop()
+	scheduler.Stop()
+}
+
 func TestReminderDeliveryErrorRequiresRetryWhenAnyTargetFails(t *testing.T) {
 	rootErr := errors.New("whatsapp disconnected")
 

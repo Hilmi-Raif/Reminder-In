@@ -94,7 +94,6 @@ export function initScheduleForm() {
         btn.disabled = true;
         btn.textContent = "...";
 
-        const isoDate = new Date().toISOString();
         let successCount = 0;
         const failures = [];
 
@@ -104,7 +103,6 @@ export function initScheduleForm() {
               message: messages[i],
               target_wa: targetWa,
               recurrence,
-              scheduled_at: isoDate,
             });
             successCount++;
           } catch (err) {
@@ -124,8 +122,6 @@ export function initScheduleForm() {
                 } else {
                   setFieldError(sfMessageError, reason);
                 }
-              } else if (field === "scheduled_at") {
-                setFieldError(sfRecurrenceError, reason);
               }
               hasError = true;
               break;

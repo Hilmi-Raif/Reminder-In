@@ -75,7 +75,7 @@ export function initTargetChips() {
     targetWaInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        addTargetBtn.click();
+        addTargetBtn?.click();
       }
     });
     targetWaInput.addEventListener("input", () => {
@@ -114,7 +114,7 @@ export function initTargetChips() {
     editTargetInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        editAddTargetBtn.click();
+        editAddTargetBtn?.click();
       }
     });
     editTargetInput.addEventListener("input", () => {

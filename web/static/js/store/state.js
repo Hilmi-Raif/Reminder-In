@@ -12,11 +12,10 @@ export const state = {
 };
 
 export const globals = {
-  activeController: null,
-  targetNumbers: [],
-  editTargetNumbers: [],
-  editOriginalScheduledAt: null,
-  groupsCache: null,
+	activeController: null,
+	targetNumbers: [],
+	editTargetNumbers: [],
+	groupsCache: null,
   contactsCache: null,
   messageEditors: {},
   messageCount: 1,

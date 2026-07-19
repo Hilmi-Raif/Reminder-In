@@ -11,6 +11,11 @@ const pageInfo = document.getElementById("page-info");
 const pageSizeSelect = document.getElementById("page-size");
 const searchInput = document.getElementById("search-input");
 
+function setTableOpacity(value) {
+  const table = remindersList ? remindersList.closest("table") : null;
+  if (table) table.style.opacity = value;
+}
+
 export async function loadReminders(fresh = true) {
   if (globals.activeController) {
     globals.activeController.abort();
@@ -22,7 +27,7 @@ export async function loadReminders(fresh = true) {
     if (fresh) {
       state.currentCursor = null;
       state.cursorStack = [];
-      if (remindersList) remindersList.closest("table").style.opacity = "0.5";
+      setTableOpacity("0.5");
     }
 
     const res = await fetchRemindersApi(
@@ -38,7 +43,7 @@ export async function loadReminders(fresh = true) {
     );
 
     if (res.status === 304) {
-      if (remindersList) remindersList.closest("table").style.opacity = "1";
+      setTableOpacity("1");
       return;
     }
 
@@ -66,7 +71,7 @@ export async function loadReminders(fresh = true) {
       console.error("Gagal memuat pengingat", err);
     }
   } finally {
-    if (remindersList) remindersList.closest("table").style.opacity = "1";
+    setTableOpacity("1");
   }
 }
 

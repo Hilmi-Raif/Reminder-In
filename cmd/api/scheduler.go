@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"reminderin/internal/store"
 	"reminderin/internal/whatsapp"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -22,6 +23,7 @@ type Scheduler struct {
 	keepaliveInterval time.Duration
 	keepaliveStop     chan struct{}
 	healthStop        chan struct{}
+	stopOnce          sync.Once
 }
 
 func NewScheduler(store *store.SQLiteStore, waMgr *whatsapp.ClientManager, keepaliveInterval time.Duration) *Scheduler {
@@ -59,9 +61,11 @@ func (s *Scheduler) Start() {
 }
 
 func (s *Scheduler) Stop() {
-	close(s.healthStop)
-	close(s.keepaliveStop)
-	s.cron.Stop()
+	s.stopOnce.Do(func() {
+		close(s.healthStop)
+		close(s.keepaliveStop)
+		s.cron.Stop()
+	})
 }
 
 func (s *Scheduler) processReminders() {
@@ -206,7 +210,11 @@ func (s *Scheduler) checkAndSendSmartKeepalive() {
 
 			time.Sleep(time.Duration(rand.Intn(30)+15) * time.Second)
 
-			_ = client.SendPresence(context.Background(), types.PresenceUnavailable)
+			unavailableCtx, unavailableCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			if err := client.SendPresence(unavailableCtx, types.PresenceUnavailable); err != nil {
+				log.Printf("Smart Keepalive failed to send unavailable presence: %v", err)
+			}
+			unavailableCancel()
 
 			if err := s.store.SetSetting("wa_last_keepalive_time", time.Now().Format(time.RFC3339)); err != nil {
 				log.Printf("Smart Keepalive failed to save state: %v", err)

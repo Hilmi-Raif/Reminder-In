@@ -9,8 +9,8 @@ export function isValidWaFormat(val) {
 export function isValidCron(val) {
   if (!val) return false;
   const parts = val.trim().split(/\s+/);
-  if (parts.length < 5) return false;
-  const cronRegex = /^[0-9*,/\-?]+$/;
+  if (parts.length !== 5) return false;
+  const cronRegex = /^[0-9*,/\-]+$/;
   return parts.every(part => cronRegex.test(part));
 }
 
