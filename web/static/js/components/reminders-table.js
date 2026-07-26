@@ -81,6 +81,19 @@ function buildRowCellsHTML(rem) {
   const isExpired = !isRecurring && new Date(rem.scheduled_at) < new Date();
   const toggleDisabled = isExpired;
   const scheduledDisplay = rem.is_active ? formatHumanDate(rem.scheduled_at) : "-";
+  const runs = rem.run_count || 0;
+  let recurrenceDisplay = "-";
+  if (isRecurring) {
+    if (rem.max_runs > 0) {
+      recurrenceDisplay = `${recurrence} (${runs}/${rem.max_runs})`;
+    } else {
+      recurrenceDisplay = `${recurrence} (${runs}x)`;
+    }
+  } else if (rem.max_runs > 0) {
+    recurrenceDisplay = `(${runs}/${rem.max_runs})`;
+  } else if (runs > 0) {
+    recurrenceDisplay = `${runs}x`;
+  }
 
   return `
     <td data-label="${t("thMessage")}">
@@ -93,7 +106,7 @@ function buildRowCellsHTML(rem) {
         <div style="font-weight: 500;">${escapeHtml(scheduledDisplay)}</div>
     </td>
     <td data-label="${t("thRecurrence")}">
-        <div style="font-weight: 500;">${escapeHtml(recurrence)}</div>
+        <div style="font-weight: 500;">${escapeHtml(recurrenceDisplay)}</div>
     </td>
     <td data-label="${t("thStatus")}" align="center">
         <input type="checkbox" onchange="toggleReminder('${rem.id}')" 

@@ -111,7 +111,7 @@ export function initWaConnection() {
       qrContainer.hidden = false;
       codeContainer.hidden = true;
       qrImg.src = "";
-      qrImg.alt = "Menghasilkan QR...";
+      qrImg.alt = t("generatingQR");
       linkWaQrBtn.disabled = true;
 
       if (activeQrEvtSource) {
@@ -128,7 +128,7 @@ export function initWaConnection() {
             qrImg.alt = "QR Code";
           } else {
             qrImg.src = "";
-            qrImg.alt = "QR unavailable";
+            qrImg.alt = t("qrUnavailable");
           }
           linkWaQrBtn.disabled = false;
         } else if (data.type === "success") {
@@ -176,7 +176,7 @@ export function initWaConnection() {
 
       codeContainer.hidden = false;
       qrContainer.hidden = true;
-      pairCodeDisplay.textContent = "Menghasilkan...";
+      pairCodeDisplay.textContent = t("generatingCode");
       linkWaPhoneBtn.disabled = true;
 
       if (activePhoneEvtSource) {

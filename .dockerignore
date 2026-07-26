@@ -2,15 +2,3 @@
 .gitignore
 .idea
 .vscode
-
-.env
-
-data/
-*.db
-*.db-shm
-*.db-wal
-
-api
-api.exe
-
-README.md

@@ -1,0 +1,152 @@
+name: CI/CD Pipeline & Automated Release
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+jobs:
+  test-and-automerge:
+    name: Run Unit Tests & Auto-Merge Dependabot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Run Go Unit Tests
+        run: go test -v ./...
+
+      - name: Fetch Dependabot Metadata
+        if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'
+        id: dependabot-metadata
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Dependabot Auto-Merge (whatsmeow only)
+        if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request' && contains(steps.dependabot-metadata.outputs.dependency-names, 'go.mau.fi/whatsmeow')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  auto-tag-dependabot:
+    name: Auto-Tag Dependabot Merges
+    needs: test-and-automerge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump Patch Tag & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+          VERSION_NUMBERS="${LATEST_TAG#v}"
+          MAJOR=$(echo "$VERSION_NUMBERS" | cut -d. -f1)
+          MINOR=$(echo "$VERSION_NUMBERS" | cut -d. -f2)
+          PATCH=$(echo "$VERSION_NUMBERS" | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_TAG="v${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "Bumping $LATEST_TAG -> $NEW_TAG for Dependabot merge"
+          git tag -a "$NEW_TAG" -m "Automated release $NEW_TAG from Dependabot update"
+          git push origin "$NEW_TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-and-release:
+    name: Build Docker & Create GitHub Release
+    needs: test-and-automerge
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve Tag Metadata
+        id: metadata
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.RELEASE_TAG;
+
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              return;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              name: tag,
+              generate_release_notes: true,
+              draft: false,
+              prerelease: false,
+            });
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (Tags & Labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ steps.metadata.outputs.tag }}
+            type=raw,value=latest
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.metadata.outputs.tag }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
