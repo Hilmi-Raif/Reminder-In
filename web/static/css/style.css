@@ -1,3 +1,28 @@
+@font-face {
+  font-family: 'Cera Round Pro';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/CeraRoundPro-Regular.woff') format('woff');
+}
+@font-face {
+  font-family: 'Cera Round Pro';
+  font-style: normal;
+  font-weight: 500;
+  src: url('/fonts/CeraRoundPro-Medium.woff') format('woff');
+}
+@font-face {
+  font-family: 'Cera Round Pro';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/CeraRoundPro-Bold.woff') format('woff');
+}
+@font-face {
+  font-family: 'Cera Round Pro';
+  font-style: normal;
+  font-weight: 900;
+  src: url('/fonts/CeraRoundPro-Black.woff') format('woff');
+}
+
 * {
   box-sizing: border-box;
 }
@@ -12,6 +37,9 @@
   --neo-radius-lg: 0px;
   --neo-shadow: 4px 4px 0 var(--neo-shadow-color);
   --neo-shadow-sm: 2px 2px 0 var(--neo-shadow-color);
+  
+  --logo-outline: #000000;
+  --logo-fill: #eaff00;
   
   --surface-1: #ffffff;
   --surface-2: #f4f4f4;
@@ -34,6 +62,9 @@
   --neo-text: #ffffff;
   --neo-border: #404040;
   --neo-shadow-color: #404040;
+  
+  --logo-outline: #eaff00;
+  --logo-fill: #000000;
   
   --surface-1: #0a0a0a;
   --surface-2: #1a1a1a;
@@ -58,7 +89,7 @@ body {
   overflow-x: hidden;
   color: var(--text-color);
   background-color: var(--bg-color);
-  font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: "Cera Round Pro", system-ui, -apple-system, sans-serif;
   line-height: 1.45;
   transition:
     background-color 0.2s,
@@ -68,16 +99,7 @@ body {
 
 
 body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  opacity: 0.05;
-  pointer-events: none;
-  background-image:
-    linear-gradient(90deg, var(--neo-text) 1px, transparent 1px),
-    linear-gradient(0deg, var(--neo-text) 1px, transparent 1px);
-  background-size: 32px 32px;
+  display: none;
 }
 
 .container {
@@ -102,10 +124,22 @@ body::after {
 
 .app-header h1 {
   margin: 0;
-  font-family: "Archivo Black", "Arial Black", sans-serif;
+  font-family: "Cera Round Pro", sans-serif;
+  font-weight: 800;
   font-size: clamp(1.5rem, 2.2vw, 2rem);
   letter-spacing: 0.02em;
   text-transform: uppercase;
+}
+
+.logo-re {
+  color: #eaff00;
+  -webkit-text-stroke: 3.5px #000000;
+  paint-order: stroke fill;
+}
+
+[data-theme="dark"] .logo-re {
+  color: #eaff00;
+  -webkit-text-stroke: 0;
 }
 
 .app-footer {
@@ -195,7 +229,8 @@ fieldset {
 fieldset legend {
   margin-bottom: 12px;
   padding: 2px 10px;
-  font-family: "Archivo Black", "Arial Black", sans-serif;
+  font-family: "Cera Round Pro", sans-serif;
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   font-size: 0.9rem;
@@ -317,8 +352,8 @@ button:focus-visible {
   min-width: 44px;
   min-height: 44px;
   padding: 0 12px;
-  background: #ffffff;
-  color: #101010;
+  background: var(--btn-bg);
+  color: var(--btn-text);
 }
 
 #toggle-password svg {
@@ -665,8 +700,10 @@ button:disabled {
 }
 
 .lite-toolbar button:active,
-.format-toolbar button:active {
-  transform: translate(2px, 2px);
+.format-toolbar button:active,
+.lite-toolbar button.is-pressed,
+.format-toolbar button.is-pressed {
+  transform: translate(3px, 3px);
   box-shadow: 1px 1px 0 var(--neo-shadow-color);
 }
 
@@ -788,7 +825,8 @@ table {
 
 thead th {
   background: var(--surface-2);
-  font-family: "Archivo Black", "Arial Black", sans-serif;
+  font-family: "Cera Round Pro", sans-serif;
+  font-weight: 700;
   letter-spacing: 0.01em;
   text-transform: uppercase;
   font-size: 0.78rem;
@@ -875,7 +913,8 @@ tbody tr:first-child td {
 
 .modal-box h3 {
   margin: 0 0 8px;
-  font-family: "Archivo Black", "Arial Black", sans-serif;
+  font-family: "Cera Round Pro", sans-serif;
+  font-weight: 700;
   text-transform: uppercase;
   font-size: 1rem;
 }
@@ -1070,6 +1109,7 @@ input[type="radio"] {
     grid-column: 2;
     grid-row: 1 / span 2;
     margin-bottom: 0;
+    height: 100%;
   }
 }
 

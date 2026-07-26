@@ -77,7 +77,7 @@ Main configuration fields:
 | Key | Required | Default | Description |
 | --- | -------- | ------- | ----------- |
 | `REMINDERIN_USERNAME` | Yes | - | Admin username for dashboard login |
-| `REMINDERIN_PASSWORD` | Yes | - | Admin password for dashboard login |
+| `REMINDERIN_PASSWORD_HASH` | Yes | - | Bcrypt password hash for dashboard login (generated via `go run ./cmd/genhash <password>`) |
 | `JWT_SECRET` | Yes | - | JWT signing secret; use at least 32 random bytes |
 | `PORT` | No | `8080` | HTTP server port |
 | `DB_PATH` | No | `data/reminderin.db` | Main SQLite database path |
@@ -122,11 +122,15 @@ cd Reminder-In
 cp .env.example .env
 ```
 
-3. Fill required values in `.env`:
+3. Generate password hash and fill required values in `.env`:
+
+```bash
+go run ./cmd/genhash your_strong_password
+```
 
 ```env
 REMINDERIN_USERNAME=your_admin_username
-REMINDERIN_PASSWORD=your_strong_password
+REMINDERIN_PASSWORD_HASH=output_from_genhash
 JWT_SECRET=your_random_secret_min_32_bytes
 ```
 

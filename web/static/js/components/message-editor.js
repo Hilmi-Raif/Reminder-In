@@ -27,8 +27,11 @@ export function createLiteEditor(containerId) {
     btn.title = c.cmd;
     btn.addEventListener("mousedown", (e) => {
       e.preventDefault();
+      btn.classList.add("is-pressed");
       document.execCommand(c.cmd, false, null);
     });
+    btn.addEventListener("mouseup", () => btn.classList.remove("is-pressed"));
+    btn.addEventListener("mouseleave", () => btn.classList.remove("is-pressed"));
     toolbar.appendChild(btn);
   });
 
