@@ -175,8 +175,14 @@
             </div>
             <div id="recurrence-section" class="form-section">
               <label for="recurrence" data-i18n="recurrence">Recurrence:</label>
-              <input type="text" id="recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron expression (e.g. */30 * * * *)" required autocomplete="off" />
+              <input type="text" id="recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron format (e.g. */30 * * * *)" required autocomplete="off" />
               <span id="sf-recurrence-error" class="field-error"></span>
+            </div>
+            <div id="max-runs-section" class="form-section">
+              <label for="max-runs" data-i18n="maxRuns">Max Runs:</label>
+              <input type="number" id="max-runs" min="0" value="0" data-i18n-placeholder="maxRunsPlaceholder" placeholder="0 = Unlimited" autocomplete="off" />
+              <span class="form-hint" data-i18n="maxRunsHint">Set 0 for unlimited.</span>
+              <span id="sf-max-runs-error" class="field-error"></span>
             </div>
 
             <div style="display: flex; justify-content: flex-end;">
@@ -364,8 +370,14 @@
 
             <div id="edit-recurrence-section" class="form-section">
               <label for="edit-recurrence" data-i18n="recurrence">Recurrence:</label>
-              <input type="text" id="edit-recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron expression (e.g. */30 * * * *)" required autocomplete="off" />
+              <input type="text" id="edit-recurrence" data-i18n-placeholder="cronPlaceholder" placeholder="Cron format (e.g. */30 * * * *)" required autocomplete="off" />
               <span id="em-recurrence-error" class="field-error"></span>
+            </div>
+            <div id="edit-max-runs-section" class="form-section">
+              <label for="edit-max-runs" data-i18n="maxRuns">Max Runs:</label>
+              <input type="number" id="edit-max-runs" min="0" value="0" data-i18n-placeholder="maxRunsPlaceholder" placeholder="0 = Unlimited" autocomplete="off" />
+              <span class="form-hint" data-i18n="maxRunsHint">Set 0 for unlimited.</span>
+              <span id="em-max-runs-error" class="field-error"></span>
             </div>
 
             <div style="display: flex; justify-content: flex-end;">

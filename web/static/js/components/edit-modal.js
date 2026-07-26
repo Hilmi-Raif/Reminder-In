@@ -11,14 +11,16 @@ const editModal = document.getElementById("edit-modal");
 const closeEditBtn = document.getElementById("close-edit-btn");
 const editForm = document.getElementById("edit-schedule-form");
 const editRecurrenceInput = document.getElementById("edit-recurrence");
+const editMaxRunsInput = document.getElementById("edit-max-runs");
 const editTargetInput = document.getElementById("edit-target-input");
 
 const emMessageError = document.getElementById("em-message-error");
 const emTargetError = document.getElementById("em-target-error");
 const emRecurrenceError = document.getElementById("em-recurrence-error");
+const emMaxRunsError = document.getElementById("em-max-runs-error");
 
 function clearEditErrors() {
-  [emMessageError, emTargetError, emRecurrenceError].forEach((el) => {
+  [emMessageError, emTargetError, emRecurrenceError, emMaxRunsError].forEach((el) => {
     if (el) el.textContent = "";
   });
 }
@@ -56,6 +58,7 @@ export function initEditModal() {
     document.getElementById("edit-target-input").value = "";
 
     editRecurrenceInput.value = (rem.recurrence || "").trim();
+    if (editMaxRunsInput) editMaxRunsInput.value = rem.max_runs || 0;
 
     editModal.classList.add("active");
     document.body.style.overflow = "hidden";
@@ -86,6 +89,7 @@ export function initEditModal() {
         : "";
       const targetWa = (globals.editTargetNumbers || []).join(",");
       const recurrence = editRecurrenceInput.value.trim();
+      const maxRunsVal = editMaxRunsInput ? parseInt(editMaxRunsInput.value, 10) || 0 : 0;
 
       let hasError = false;
       if (!message) {
@@ -104,6 +108,11 @@ export function initEditModal() {
         hasError = true;
       }
 
+      if (maxRunsVal < 0) {
+        setEditFieldError(emMaxRunsError, t("invalidMaxRuns"));
+        hasError = true;
+      }
+
       if (editTargetInput && editTargetInput.value.trim()) {
         setEditFieldError(emTargetError, t("targetNotAdded"));
         hasError = true;
@@ -118,7 +127,8 @@ export function initEditModal() {
         const payload = {
           message: message,
           target_wa: targetWa,
-          recurrence,
+          recurrence: recurrence,
+          max_runs: maxRunsVal,
         };
 
         await updateReminderApi(id, payload);

@@ -184,3 +184,73 @@ func TestToggleReminderActiveRejectsInvalidRecurrenceWhenEnabling(t *testing.T) 
 		t.Fatalf("expected scheduled_at to stay %s, got %s", staleTime, reminders[0].ScheduledAt)
 	}
 }
+
+func TestMaxRunsDeactivation(t *testing.T) {
+	s := newTestSQLiteStore(t)
+	id := uuid.Must(uuid.NewV7())
+	dueTime := time.Now().Add(-time.Minute)
+
+	if err := s.CreateReminder(Reminder{
+		ID:          id,
+		Message:     "max runs test",
+		TargetWa:    "6281234567890",
+		Recurrence:  "* * * * *",
+		ScheduledAt: dueTime,
+		IsActive:    true,
+		MaxRuns:     2,
+		RunCount:    1,
+	}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+
+	s.ProcessDueReminders(func(rem Reminder) error {
+		return nil
+	})
+
+	updated, err := s.GetReminder(id)
+	if err != nil {
+		t.Fatalf("get reminder: %v", err)
+	}
+
+	if updated.RunCount != 2 {
+		t.Fatalf("expected run_count=2, got %d", updated.RunCount)
+	}
+	if updated.IsActive {
+		t.Fatal("expected reminder to be deactivated after reaching max_runs")
+	}
+}
+
+func TestToggleResetsRunCount(t *testing.T) {
+	s := newTestSQLiteStore(t)
+	id := uuid.Must(uuid.NewV7())
+	dueTime := time.Now().Add(-time.Minute)
+
+	if err := s.CreateReminder(Reminder{
+		ID:          id,
+		Message:     "toggle reset test",
+		TargetWa:    "6281234567890",
+		Recurrence:  "* * * * *",
+		ScheduledAt: dueTime,
+		IsActive:    false,
+		MaxRuns:     5,
+		RunCount:    5,
+	}); err != nil {
+		t.Fatalf("create reminder: %v", err)
+	}
+
+	if _, err := s.ToggleReminderActive(id); err != nil {
+		t.Fatalf("toggle active: %v", err)
+	}
+
+	updated, err := s.GetReminder(id)
+	if err != nil {
+		t.Fatalf("get reminder: %v", err)
+	}
+
+	if !updated.IsActive {
+		t.Fatal("expected reminder to be active")
+	}
+	if updated.RunCount != 0 {
+		t.Fatalf("expected run_count to reset to 0, got %d", updated.RunCount)
+	}
+}

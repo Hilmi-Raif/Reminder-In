@@ -61,6 +61,10 @@ const translations = {
     targetHint: "Leave empty to send to yourself.",
     recurrence: "Recurrence:",
     cronPlaceholder: "Cron format (e.g. */30 * * * *)",
+    maxRuns: "Max Runs:",
+    maxRunsPlaceholder: "0 = Unlimited",
+    maxRunsHint: "Set 0 for unlimited.",
+    invalidMaxRuns: "Max runs cannot be negative",
     scheduleBtn: "Schedule",
 
     reminderList: "Your Reminders",
@@ -209,6 +213,10 @@ const translations = {
     targetHint: "Kosongkan untuk kirim ke diri sendiri.",
     recurrence: "Pengulangan:",
     cronPlaceholder: "Format cron (misal: */30 * * * *)",
+    maxRuns: "Batas Pengulangan:",
+    maxRunsPlaceholder: "0 = Tanpa batas",
+    maxRunsHint: "Isi 0 untuk tanpa batas.",
+    invalidMaxRuns: "Batas pengulangan tidak boleh negatif",
     scheduleBtn: "Jadwalkan",
 
     reminderList: "Daftar Pengingat Anda",

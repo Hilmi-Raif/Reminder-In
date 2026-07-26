@@ -10,11 +10,13 @@ import { isValidCron } from "../utils/validators.js";
 
 const scheduleForm = document.getElementById("schedule-form");
 const cronInput = document.getElementById("recurrence");
+const maxRunsInput = document.getElementById("max-runs");
 const targetWaInput = document.getElementById("target-wa-input");
 
 const sfMessageError = document.getElementById("sf-message-error");
 const sfTargetError = document.getElementById("sf-target-error");
 const sfRecurrenceError = document.getElementById("sf-recurrence-error");
+const sfMaxRunsError = document.getElementById("sf-max-runs-error");
 
 function clearFieldErrors() {
   document.querySelectorAll(".field-error").forEach((el) => {
@@ -83,6 +85,12 @@ export function initScheduleForm() {
         hasError = true;
       }
 
+      const maxRunsVal = maxRunsInput ? parseInt(maxRunsInput.value, 10) || 0 : 0;
+      if (maxRunsVal < 0) {
+        setFieldError(sfMaxRunsError, t("invalidMaxRuns"));
+        hasError = true;
+      }
+
       if (targetWaInput && targetWaInput.value.trim()) {
         setFieldError(sfTargetError, t("targetNotAdded"));
         hasError = true;
@@ -103,6 +111,7 @@ export function initScheduleForm() {
               message: messages[i],
               target_wa: targetWa,
               recurrence,
+              max_runs: maxRunsVal,
             });
             successCount++;
           } catch (err) {
@@ -112,6 +121,8 @@ export function initScheduleForm() {
             if (field) {
               if (field === "recurrence") {
                 setFieldError(sfRecurrenceError, reason);
+              } else if (field === "max_runs") {
+                setFieldError(sfMaxRunsError, reason);
               } else if (field === "target_wa") {
                 setFieldError(sfTargetError, reason);
               } else if (field === "message") {
