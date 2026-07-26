@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,8 +45,19 @@ const (
 	loginLimiterDefaultCleanup   = 5 * time.Minute
 )
 
+func getVersion() string {
+	if Version != "" && Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
+
 func main() {
 	_ = godotenv.Load()
+	Version = getVersion()
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {

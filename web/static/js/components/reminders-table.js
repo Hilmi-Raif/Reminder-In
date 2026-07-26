@@ -81,9 +81,19 @@ function buildRowCellsHTML(rem) {
   const isExpired = !isRecurring && new Date(rem.scheduled_at) < new Date();
   const toggleDisabled = isExpired;
   const scheduledDisplay = rem.is_active ? formatHumanDate(rem.scheduled_at) : "-";
-  const recurrenceDisplay = rem.max_runs > 0
-    ? `${recurrence} (${rem.run_count || 0}/${rem.max_runs})`
-    : recurrence;
+  const runs = rem.run_count || 0;
+  let recurrenceDisplay = "-";
+  if (isRecurring) {
+    if (rem.max_runs > 0) {
+      recurrenceDisplay = `${recurrence} (${runs}/${rem.max_runs})`;
+    } else {
+      recurrenceDisplay = `${recurrence} (${runs}x)`;
+    }
+  } else if (rem.max_runs > 0) {
+    recurrenceDisplay = `(${runs}/${rem.max_runs})`;
+  } else if (runs > 0) {
+    recurrenceDisplay = `${runs}x`;
+  }
 
   return `
     <td data-label="${t("thMessage")}">

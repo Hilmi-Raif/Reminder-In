@@ -65,8 +65,8 @@ jobs:
       - name: Generate Automated Version Tag
         id: versioning
         run: |
-          if [ -f VERSION ]; then
-            TAG_NAME=$(cat VERSION | tr -d '\r\n')
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
           else
             TAG_NAME="v1.0.1"
           fi

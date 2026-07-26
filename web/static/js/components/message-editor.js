@@ -77,6 +77,9 @@ export function pruneMessageEditors() {
 export function initMessageEditor() {
   if (addMessageBtn)
     addMessageBtn.addEventListener("click", () => {
+      const isAtBottom =
+        messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 30;
+
       const newId = `message-${globals.messageCount}`;
       const block = document.createElement("div");
       block.className = "message-block";
@@ -85,10 +88,12 @@ export function initMessageEditor() {
         messageList.querySelectorAll(".message-block").length;
 
       block.innerHTML = `
-        <label for="message-${globals.messageCount}"><span data-i18n="messageLabel">${t("messageLabel")}</span> ${currentBlocks + 1}:</label>
+        <div class="message-block-header">
+          <label for="message-${globals.messageCount}"><span data-i18n="messageLabel">${t("messageLabel")}</span> ${currentBlocks + 1}:</label>
+          <button type="button" class="remove-message-btn" data-i18n="removeMessage">${t("removeMessage")}</button>
+        </div>
         <div id="message-container-${globals.messageCount}"></div>
         <span id="sf-msg-error-${globals.messageCount}" class="field-error message-block-error"></span>
-        <button type="button" class="remove-message-btn" data-i18n="removeMessage">${t("removeMessage")}</button>
     `;
       messageList.appendChild(block);
 
@@ -98,6 +103,10 @@ export function initMessageEditor() {
       removeBtns.forEach((b) => (b.style.display = "inline-block"));
 
       globals.messageCount++;
+
+      if (isAtBottom) {
+        messageList.scrollTop = messageList.scrollHeight;
+      }
     });
 
   if (messageList)
