@@ -52,6 +52,7 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 		Message    string `json:"message"`
 		TargetWa   string `json:"target_wa"`
 		Recurrence string `json:"recurrence"`
+		MaxRuns    *int   `json:"max_runs"`
 	}
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -60,6 +61,15 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 	req.Message = strings.TrimSpace(req.Message)
 	req.TargetWa = strings.TrimSpace(req.TargetWa)
 	req.Recurrence = strings.TrimSpace(req.Recurrence)
+
+	maxRunsVal := 0
+	if req.MaxRuns != nil {
+		if *req.MaxRuns < 0 {
+			WriteError(w, http.StatusBadRequest, "Max runs cannot be negative", map[string]string{"field": "max_runs"})
+			return
+		}
+		maxRunsVal = *req.MaxRuns
+	}
 
 	normalizedTargets, err := normalizeReminderTargets(req.TargetWa)
 	if err != nil {
@@ -88,6 +98,8 @@ func (h *APIHandler) CreateReminder(w http.ResponseWriter, r *http.Request) {
 		TargetWa:   target,
 		Recurrence: req.Recurrence,
 		IsActive:   true,
+		MaxRuns:    maxRunsVal,
+		RunCount:   0,
 	}
 
 	now := time.Now()
@@ -194,6 +206,7 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 		Message    string `json:"message"`
 		TargetWa   string `json:"target_wa"`
 		Recurrence string `json:"recurrence"`
+		MaxRuns    *int   `json:"max_runs"`
 	}
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -232,12 +245,35 @@ func (h *APIHandler) UpdateReminder(w http.ResponseWriter, r *http.Request) {
 			WriteError(w, http.StatusBadRequest, "Invalid cron expression", map[string]string{"field": "recurrence"})
 			return
 		}
+
+		existing, getErr := h.Store.GetReminder(id)
+		if getErr != nil {
+			if errors.Is(getErr, store.ErrReminderNotFound) {
+				WriteError(w, http.StatusNotFound, "Reminder not found", nil)
+				return
+			}
+			WriteError(w, http.StatusInternalServerError, "Failed to get reminder", nil)
+			return
+		}
+
+		maxRunsVal := existing.MaxRuns
+		if req.MaxRuns != nil {
+			if *req.MaxRuns < 0 {
+				WriteError(w, http.StatusBadRequest, "Max runs cannot be negative", map[string]string{"field": "max_runs"})
+				return
+			}
+			maxRunsVal = *req.MaxRuns
+		}
+
 		updated := store.Reminder{
+			ID:          id,
 			Message:     req.Message,
 			TargetWa:    req.TargetWa,
 			Recurrence:  req.Recurrence,
 			ScheduledAt: nextRun,
-			IsActive:    true,
+			IsActive:    existing.IsActive,
+			MaxRuns:     maxRunsVal,
+			RunCount:    existing.RunCount,
 		}
 
 		err = h.Store.UpdateReminder(id, updated)

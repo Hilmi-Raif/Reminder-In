@@ -25,6 +25,8 @@ type Reminder struct {
 	Recurrence  string    `json:"recurrence"`
 	ScheduledAt time.Time `json:"scheduled_at"`
 	IsActive    bool      `json:"is_active"`
+	MaxRuns     int       `json:"max_runs"`
+	RunCount    int       `json:"run_count"`
 }
 
 var ErrReminderNotFound = errors.New("reminder not found")
@@ -72,7 +74,9 @@ func (s *SQLiteStore) migrate() error {
 			target_wa    TEXT NOT NULL DEFAULT '',
 			recurrence   TEXT NOT NULL DEFAULT '',
 			scheduled_at DATETIME NOT NULL,
-			is_active    INTEGER NOT NULL DEFAULT 1
+			is_active    INTEGER NOT NULL DEFAULT 1,
+			max_runs     INTEGER NOT NULL DEFAULT 0,
+			run_count    INTEGER NOT NULL DEFAULT 0
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_reminders_active_scheduled
@@ -113,7 +117,13 @@ func (s *SQLiteStore) migrate() error {
 		CREATE INDEX IF NOT EXISTS idx_target_dispatch_marks_created_at
 			ON reminder_target_dispatch_marks(created_at);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, _ = s.db.Exec(`ALTER TABLE reminders ADD COLUMN max_runs INTEGER NOT NULL DEFAULT 0;`)
+	_, _ = s.db.Exec(`ALTER TABLE reminders ADD COLUMN run_count INTEGER NOT NULL DEFAULT 0;`)
+	return nil
 }
 
 func (s *SQLiteStore) Close() error {
@@ -171,8 +181,8 @@ func (s *SQLiteStore) ClearWALogoutReason() error {
 
 func (s *SQLiteStore) CreateReminder(r Reminder) error {
 	_, err := s.db.Exec(
-		"INSERT INTO reminders (id, message, target_wa, recurrence, scheduled_at, is_active) VALUES (?, ?, ?, ?, ?, ?)",
-		r.ID.String(), r.Message, r.TargetWa, r.Recurrence, r.ScheduledAt, boolToInt(r.IsActive),
+		"INSERT INTO reminders (id, message, target_wa, recurrence, scheduled_at, is_active, max_runs, run_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		r.ID.String(), r.Message, r.TargetWa, r.Recurrence, r.ScheduledAt, boolToInt(r.IsActive), r.MaxRuns, r.RunCount,
 	)
 	if err == nil {
 		s.bumpVersion()
@@ -195,8 +205,8 @@ func (s *SQLiteStore) DeleteReminder(id uuid.UUID) error {
 
 func (s *SQLiteStore) UpdateReminder(id uuid.UUID, updated Reminder) error {
 	res, err := s.db.Exec(
-		"UPDATE reminders SET message = ?, target_wa = ?, recurrence = ?, scheduled_at = ? WHERE id = ?",
-		updated.Message, updated.TargetWa, updated.Recurrence, updated.ScheduledAt, id.String(),
+		"UPDATE reminders SET message = ?, target_wa = ?, recurrence = ?, scheduled_at = ?, max_runs = ? WHERE id = ?",
+		updated.Message, updated.TargetWa, updated.Recurrence, updated.ScheduledAt, updated.MaxRuns, id.String(),
 	)
 	if err != nil {
 		return err
@@ -248,7 +258,7 @@ func (s *SQLiteStore) ToggleReminderActive(id uuid.UUID) (Reminder, error) {
 		return Reminder{}, ErrInvalidRecurrence
 	}
 	next := sched.Next(time.Now())
-	res, err := s.db.Exec("UPDATE reminders SET is_active = 1, scheduled_at = ? WHERE id = ? AND is_active = 0", next, id.String())
+	res, err := s.db.Exec("UPDATE reminders SET is_active = 1, run_count = 0, scheduled_at = ? WHERE id = ? AND is_active = 0", next, id.String())
 	if err != nil {
 		return Reminder{}, err
 	}
@@ -323,7 +333,7 @@ func (s *SQLiteStore) GetReminders(cursor *uuid.UUID, limit int, search, sortBy,
 	}
 
 	query := fmt.Sprintf(
-		"SELECT id, message, target_wa, recurrence, scheduled_at, is_active FROM reminders%s ORDER BY %s LIMIT ?",
+		"SELECT id, message, target_wa, recurrence, scheduled_at, is_active, max_runs, run_count FROM reminders%s ORDER BY %s LIMIT ?",
 		queryWhere,
 		orderClause,
 	)
@@ -343,7 +353,7 @@ func (s *SQLiteStore) GetReminders(cursor *uuid.UUID, limit int, search, sortBy,
 		var active int
 		var scheduledAt string
 
-		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active); err != nil {
+		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active, &r.MaxRuns, &r.RunCount); err != nil {
 			continue
 		}
 		parsedID, err := uuid.Parse(idStr)
@@ -376,9 +386,9 @@ func (s *SQLiteStore) GetReminder(id uuid.UUID) (Reminder, error) {
 	var idStr, scheduledAt string
 	var active int
 	err := s.db.QueryRow(
-		"SELECT id, message, target_wa, recurrence, scheduled_at, is_active FROM reminders WHERE id = ?",
+		"SELECT id, message, target_wa, recurrence, scheduled_at, is_active, max_runs, run_count FROM reminders WHERE id = ?",
 		id.String(),
-	).Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active)
+	).Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &active, &r.MaxRuns, &r.RunCount)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Reminder{}, ErrReminderNotFound
@@ -400,7 +410,7 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 	batchLimit := dueReminderBatchLimit()
 
 	rows, err := s.db.Query(
-		"SELECT id, message, target_wa, recurrence, scheduled_at FROM reminders WHERE is_active = 1 AND scheduled_at <= ? ORDER BY scheduled_at ASC LIMIT ?",
+		"SELECT id, message, target_wa, recurrence, scheduled_at, max_runs, run_count FROM reminders WHERE is_active = 1 AND scheduled_at <= ? ORDER BY scheduled_at ASC LIMIT ?",
 		now,
 		batchLimit,
 	)
@@ -422,7 +432,7 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 		var r Reminder
 		var idStr, scheduledAt string
 
-		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt); err != nil {
+		if err := rows.Scan(&idStr, &r.Message, &r.TargetWa, &r.Recurrence, &scheduledAt, &r.MaxRuns, &r.RunCount); err != nil {
 			continue
 		}
 		parsedID, err := uuid.Parse(idStr)
@@ -465,8 +475,10 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 		}
 
 		updateApplied := false
-		if r.Recurrence == "" {
-			res, err := s.db.Exec("UPDATE reminders SET is_active = 0 WHERE id = ? AND is_active = 1", idStr)
+		newRunCount := r.RunCount + 1
+
+		if r.Recurrence == "" || (r.MaxRuns > 0 && newRunCount >= r.MaxRuns) {
+			res, err := s.db.Exec("UPDATE reminders SET is_active = 0, run_count = ? WHERE id = ? AND is_active = 1", newRunCount, idStr)
 			if err == nil {
 				if n, rowsErr := res.RowsAffected(); rowsErr == nil && n > 0 {
 					updateApplied = true
@@ -474,7 +486,7 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 			}
 		} else {
 			if _, invalid := invalidSchedules[r.Recurrence]; invalid {
-				res, err := s.db.Exec("UPDATE reminders SET is_active = 0 WHERE id = ? AND is_active = 1", idStr)
+				res, err := s.db.Exec("UPDATE reminders SET is_active = 0, run_count = ? WHERE id = ? AND is_active = 1", newRunCount, idStr)
 				if err == nil {
 					if n, rowsErr := res.RowsAffected(); rowsErr == nil && n > 0 {
 						updateApplied = true
@@ -486,7 +498,7 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 					parsed, err := dueReminderCronParser.Parse(r.Recurrence)
 					if err != nil {
 						invalidSchedules[r.Recurrence] = struct{}{}
-						res, deactiveErr := s.db.Exec("UPDATE reminders SET is_active = 0 WHERE id = ? AND is_active = 1", idStr)
+						res, deactiveErr := s.db.Exec("UPDATE reminders SET is_active = 0, run_count = ? WHERE id = ? AND is_active = 1", newRunCount, idStr)
 						if deactiveErr == nil {
 							if n, rowsErr := res.RowsAffected(); rowsErr == nil && n > 0 {
 								updateApplied = true
@@ -501,8 +513,9 @@ func (s *SQLiteStore) ProcessDueReminders(sendFn func(rem Reminder) error) {
 				if !updateApplied && sched != nil {
 					next := sched.Next(now)
 					res, err := s.db.Exec(
-						"UPDATE reminders SET scheduled_at = ? WHERE id = ? AND is_active = 1",
+						"UPDATE reminders SET scheduled_at = ?, run_count = ? WHERE id = ? AND is_active = 1",
 						next,
+						newRunCount,
 						idStr,
 					)
 					if err == nil {

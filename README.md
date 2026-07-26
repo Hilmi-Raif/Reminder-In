@@ -1,29 +1,28 @@
 # Reminder-In
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/5de67f83-10d3-4426-afb1-df6d8a31d5d2" alt="ReminderIn dashboard preview" width="100%" />
+  <img src="https://github.com/user-attachments/assets/9bd2a41c-85c6-479e-b5c9-fb4894bd8573" alt="ReminderIn dashboard preview" width="100%" />
 </p>
 
 **ReminderIn** is a private WhatsApp reminder dashboard for scheduling recurring reminders and sending them to yourself, contacts, groups, or direct WhatsApp JIDs.
 
-It runs as a lightweight Go web app with SQLite persistence, WhatsApp Web multi-device integration through whatsmeow, cron-based scheduling, QR or phone-code pairing, and a simple browser dashboard protected by cookie-based JWT authentication.
+It runs as a lightweight Go web app with SQLite persistence, WhatsApp Web multi-device integration through whatsmeow, cron-based scheduling, QR or phone-code pairing, and a Neobrutalist browser dashboard protected by cookie-based JWT authentication.
 
 > **Personal automation note:** This project uses WhatsApp Web automation through whatsmeow. Keep the dependency updated because WhatsApp periodically rejects outdated web protocol versions.
 
 ## Features
 
-- Login-protected dashboard with HTTP-only JWT cookie auth.
-- IP-based login attempt limiter and same-origin request protection.
-- WhatsApp linking through QR scan or phone pairing code.
-- Recurring reminder scheduling with 5-field cron expressions.
-- Server-side scheduled time calculation from recurrence and current server time.
-- Safe re-enable behavior that recalculates stale disabled reminders before they run.
-- Multi-target delivery to yourself, phone numbers, groups, or WhatsApp JIDs.
-- Per-target dispatch marks so partial delivery failures retry only failed targets.
-- SQLite persistence for reminders, app settings, and WhatsApp session data.
-- Search, sort, pagination, and ETag caching for the reminder list.
-- WhatsApp safe-session handling for outdated-client outages without deleting local sessions.
-- Docker image publishing to GHCR and optional Watchtower auto-update deployment.
+- **Login-Protected Dashboard**: HTTP-only JWT cookie auth with bcrypt password hashing.
+- **WhatsApp Multi-Device Pairing**: Linking via QR code scan or 8-digit phone pairing code.
+- **Cron Recurrence & Max Runs**: 5-field cron expression scheduling with optional repeat limit (`max_runs`).
+- **Rich Text Message Editor**: Quill-powered editor with conversion to WhatsApp markdown formatting (`*bold*`, `_italic_`, `~strikethrough~`, ````code````).
+- **Multi-Message Batch Scheduling**: Schedule multiple messages simultaneously in a single submission.
+- **Multi-Target Delivery**: Send reminders to yourself, phone numbers, groups, or WhatsApp JIDs.
+- **Partial Delivery Resilience**: Per-target dispatch marks ensure retries only process unsent targets.
+- **Bilingual Support**: Runtime language switching between English (EN) and Indonesian (ID).
+- **Light & Dark Mode**: Integrated theme toggle.
+- **SQLite Persistence**: WAL-mode SQLite database storing reminders, settings, and session data.
+- **Search, Sort & Pagination**: Server-side pagination, message search, and column sorting.
 
 ## Tech Stack
 
@@ -33,36 +32,45 @@ It runs as a lightweight Go web app with SQLite persistence, WhatsApp Web multi-
 | Database | SQLite, mattn/go-sqlite3, WAL mode |
 | Scheduler | robfig/cron v3 |
 | WhatsApp | whatsmeow |
-| Auth | golang-jwt/jwt v5, HTTP-only cookies |
-| Frontend | HTML, CSS, Vanilla JavaScript |
-| Container | Docker, GHCR, Watchtower |
-| CI | GitHub Actions, Dependabot |
+| Auth | Bcrypt, golang-jwt/jwt v5 |
+| Frontend | HTML, CSS, Vanilla JS, Quill.js |
+| Container | Docker |
 
 ## Project Structure
 
 ```text
 .
-├── cmd/api/                 # HTTP server entrypoint and scheduler runtime
-│   ├── main.go
-│   ├── scheduler.go
-│   └── scheduler_test.go
+├── cmd/
+│   ├── api/                 # HTTP server entrypoint and scheduler runtime
+│   └── genhash/             # CLI utility to generate bcrypt password hashes
 ├── internal/
-│   ├── handler/             # API handlers, auth, QR/pairing, reminder endpoints
-│   ├── store/               # SQLite persistence, dispatch marks, settings
-│   └── whatsapp/            # whatsmeow client manager and WA operations
-├── web/static/              # Browser dashboard assets
-│   ├── index.html
-│   ├── css/
-│   └── js/
-├── .github/                 # Docker image and Dependabot automation
+│   ├── handler/             # API handlers and auth endpoints
+│   ├── store/               # SQLite persistence and database logic
+│   └── whatsapp/            # WhatsApp client manager and message operations
+├── web/
+│   ├── embed.go             # Embedded static web assets
+│   └── static/              # Browser dashboard UI assets
+│       ├── css/             # Stylesheets and theme variables
+│       ├── fonts/           # Local font assets (Cera Round Pro)
+│       ├── js/              # Frontend ES modules (components, i18n, store, utils)
+│       │   ├── api/
+│       │   ├── components/
+│       │   ├── i18n/
+│       │   ├── store/
+│       │   ├── utils/
+│       │   └── main.js
+│       ├── favicon.svg
+│       ├── logo.svg
+│       ├── logo-dark.svg
+│       └── index.html
+├── .github/
+│   └── workflows/           # CI/CD and automated workflows
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
 ├── go.mod
 └── README.md
 ```
-
-The web dashboard and the API server are the only application paths in this repository.
 
 ## Configuration
 
@@ -77,7 +85,7 @@ Main configuration fields:
 | Key | Required | Default | Description |
 | --- | -------- | ------- | ----------- |
 | `REMINDERIN_USERNAME` | Yes | - | Admin username for dashboard login |
-| `REMINDERIN_PASSWORD` | Yes | - | Admin password for dashboard login |
+| `REMINDERIN_PASSWORD_HASH` | Yes | - | Bcrypt password hash for dashboard login (generated via `go run ./cmd/genhash <password>`) |
 | `JWT_SECRET` | Yes | - | JWT signing secret; use at least 32 random bytes |
 | `PORT` | No | `8080` | HTTP server port |
 | `DB_PATH` | No | `data/reminderin.db` | Main SQLite database path |
@@ -105,7 +113,7 @@ Keep `.env`, SQLite databases, and WhatsApp session files private.
 - [Go](https://go.dev/doc/install) 1.25 or newer
 - CGO-capable compiler for SQLite builds
 - WhatsApp account with multi-device support
-- Docker, if running the container deployment
+- Docker, if running containerized deployment
 
 ### Setup
 
@@ -122,11 +130,15 @@ cd Reminder-In
 cp .env.example .env
 ```
 
-3. Fill required values in `.env`:
+3. Generate bcrypt password hash and fill required values in `.env`:
+
+```bash
+go run ./cmd/genhash your_strong_password
+```
 
 ```env
 REMINDERIN_USERNAME=your_admin_username
-REMINDERIN_PASSWORD=your_strong_password
+REMINDERIN_PASSWORD_HASH=output_from_genhash
 JWT_SECRET=your_random_secret_min_32_bytes
 ```
 
@@ -152,7 +164,7 @@ http://localhost:8080
 
 ## Docker Deployment
 
-The published image is available from GitHub Container Registry:
+The published multi-arch image (`linux/amd64`, `linux/arm64`) is available from GitHub Container Registry:
 
 ```text
 ghcr.io/hilmi-raif/reminder-in:latest
@@ -184,11 +196,12 @@ Watchtower is included in `docker-compose.yml` to poll GHCR and update the `remi
 
 | Command | Description |
 | ------- | ----------- |
-| `go run ./cmd/api` | Run the local API and web dashboard |
-| `go test ./...` | Run all Go tests |
-| `go build ./cmd/api` | Build the API binary |
-| `docker compose up -d` | Start the GHCR image deployment |
-| `docker compose pull` | Pull the latest published image |
+| `go run ./cmd/api` | Run local API and web dashboard |
+| `go test ./...` | Run all Go unit tests |
+| `go run ./cmd/genhash <password>` | Generate bcrypt hash for password |
+| `go build ./cmd/api` | Build API binary |
+| `docker compose up -d` | Start GHCR image deployment |
+| `docker compose pull` | Pull latest published image |
 | `docker logs -f reminderin-app` | Follow app logs |
 | `docker logs -f reminderin-updater` | Follow Watchtower update logs |
 
@@ -196,21 +209,23 @@ Watchtower is included in `docker-compose.yml` to poll GHCR and update the `remi
 
 ```mermaid
 flowchart TD
-    A[Create or edit reminder] --> B[Validate cron recurrence]
+    A[Create or edit reminder] --> B[Validate cron recurrence & max_runs]
     B --> C[Compute scheduled_at from server time]
     C --> D[Save reminder in SQLite]
     D --> E{Scheduler tick}
-    E --> F{scheduled_at <= now and active}
+    E --> F{scheduled_at <= now and is_active = 1}
     F -->|No| E
-    F -->|Yes| G[Send WhatsApp message]
+    F -->|Yes| G[Send WhatsApp message to target JIDs]
     G --> H{All targets sent}
     H -->|No| I[Keep reminder due for retry]
-    H -->|Yes| J[Write dispatch mark]
-    J --> K[Compute next scheduled_at from cron]
-    K --> D
+    H -->|Yes| J[Write dispatch mark & increment run_count]
+    J --> K{max_runs > 0 and run_count >= max_runs}
+    K -->|Yes| L[Deactivate reminder is_active = 0]
+    K -->|No| M[Compute next scheduled_at from cron]
+    M --> D
 ```
 
-The cron expression is the source of truth for recurring reminders. The stored `scheduled_at` value is the next scheduled execution time computed by the server.
+The cron expression is the source of truth for recurring reminders. The stored `scheduled_at` value is the next scheduled execution time computed by the server. If `max_runs` is specified, the reminder automatically deactivates once `run_count` reaches the limit.
 
 ## WhatsApp Session Handling
 
@@ -244,8 +259,6 @@ Back up the whole data directory before changing deployment paths or moving serv
 
 ## Notes
 
-- The current dashboard is recurrence-first and requires a cron expression for reminders.
-- Disabled reminders are not processed; re-enabling a recurring reminder recalculates its next scheduled time from the current server time.
+- Disabled reminders are not processed; re-enabling a recurring reminder recalculates its next scheduled time from current server time and resets `run_count = 0`.
 - Set `TZ=Asia/Jakarta` or another timezone explicitly in Docker so cron calculations match your expected local time.
 - Do not commit `.env`, database files, WhatsApp session files, logs, or deployment archives.
-- If WhatsApp requires a newer web client version, update the image or dependency, rebuild, and redeploy.

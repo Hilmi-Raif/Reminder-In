@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,9 +28,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
 )
 
 var (
+	Version           = "dev"
 	jwtSecret         []byte
 	trustProxyHeaders bool
 )
@@ -42,8 +45,19 @@ const (
 	loginLimiterDefaultCleanup   = 5 * time.Minute
 )
 
+func getVersion() string {
+	if Version != "" && Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
+
 func main() {
 	_ = godotenv.Load()
+	Version = getVersion()
 
 	dbPath := os.Getenv("DB_PATH")
 	if dbPath == "" {
@@ -61,22 +75,27 @@ func main() {
 	trustProxyHeaders = strings.EqualFold(os.Getenv("TRUST_PROXY_HEADERS"), "true")
 
 	adminUser := os.Getenv("REMINDERIN_USERNAME")
-	adminPass := os.Getenv("REMINDERIN_PASSWORD")
-	if adminUser == "" || adminPass == "" {
+	adminPassHash := os.Getenv("REMINDERIN_PASSWORD_HASH")
+
+	if adminUser == "" {
 		if allowInsecureDefaults {
-			if adminUser == "" {
-				adminUser = "admin"
-			}
-			if adminPass == "" {
-				adminPass = "admin"
-			}
-			log.Println("WARNING: insecure default credentials enabled via ALLOW_INSECURE_DEFAULTS=true")
+			adminUser = "admin"
 		} else {
-			log.Fatal("REMINDERIN_USERNAME and REMINDERIN_PASSWORD are required")
+			log.Fatal("REMINDERIN_USERNAME is required")
 		}
 	}
-	if adminUser == "admin" && adminPass == "admin" && !allowInsecureDefaults {
-		log.Fatal("refusing to start with default admin/admin credentials; set strong REMINDERIN_USERNAME and REMINDERIN_PASSWORD")
+
+	if adminPassHash == "" {
+		if allowInsecureDefaults {
+			hashBytes, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+			if err != nil {
+				log.Fatalf("failed to generate default password hash: %v", err)
+			}
+			adminPassHash = string(hashBytes)
+			log.Println("WARNING: insecure default credentials enabled via ALLOW_INSECURE_DEFAULTS=true")
+		} else {
+			log.Fatal("REMINDERIN_PASSWORD_HASH is required. Use 'go run ./cmd/genhash <password>' to generate a hash.")
+		}
 	}
 
 	secretEnv := os.Getenv("JWT_SECRET")
@@ -150,7 +169,7 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Use(sameOriginMiddleware)
 
-		r.Post("/login", loginHandler(adminUser, adminPass, loginLimiter))
+		r.Post("/login", loginHandler(adminUser, adminPassHash, loginLimiter))
 		r.Post("/logout", logoutHandler)
 		r.Get("/session", sessionCheckHandler)
 
@@ -196,7 +215,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("Server running on port %s", port)
+	log.Printf("Starting ReminderIn %s on port %s", Version, port)
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -228,7 +247,7 @@ func validateJWT(tokenString string) bool {
 	return err == nil && token.Valid
 }
 
-func loginHandler(adminUser, adminPass string, limiter *loginLimiter) http.HandlerFunc {
+func loginHandler(adminUser, adminPassHash string, limiter *loginLimiter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 
@@ -258,7 +277,9 @@ func loginHandler(adminUser, adminPass string, limiter *loginLimiter) http.Handl
 		}
 
 		userOK := subtle.ConstantTimeCompare([]byte(req.Username), []byte(adminUser)) == 1
-		passOK := subtle.ConstantTimeCompare([]byte(req.Password), []byte(adminPass)) == 1
+		err := bcrypt.CompareHashAndPassword([]byte(adminPassHash), []byte(req.Password))
+		passOK := (err == nil)
+
 		if !userOK || !passOK {
 			if retryAfter := limiter.RecordFailure(limitKey, time.Now()); retryAfter > 0 {
 				writeLoginRateLimit(w, retryAfter)
@@ -325,7 +346,12 @@ func sessionCheckHandler(w http.ResponseWriter, r *http.Request) {
 		handler.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"version": Version,
+	})
 }
 
 func authMiddleware(next http.Handler) http.Handler {

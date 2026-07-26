@@ -10,10 +10,11 @@ COPY . .
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} CGO_ENABLED=1 \
-    go build -trimpath -ldflags="-s -w -buildid=" -o /out/reminderin ./cmd/api
+    go build -trimpath -ldflags="-s -w -buildid= -X main.Version=${VERSION}" -o /out/reminderin ./cmd/api
 
 RUN mkdir -p /out/data
 

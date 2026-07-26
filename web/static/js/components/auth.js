@@ -117,6 +117,11 @@ export async function bootApp() {
   try {
     const res = await fetch("/api/session");
     if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.version) {
+        const verEl = document.getElementById("app-version");
+        if (verEl) verEl.textContent = data.version;
+      }
       await showApp();
     } else {
       await showLogin();
