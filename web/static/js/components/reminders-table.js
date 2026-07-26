@@ -97,7 +97,7 @@ function buildRowCellsHTML(rem) {
     </td>
     <td data-label="${t("thRecurrence")}">
         <div style="font-weight: 500;">${escapeHtml(recurrenceDisplay)}</div>
-    </td>`
+    </td>
     <td data-label="${t("thStatus")}" align="center">
         <input type="checkbox" onchange="toggleReminder('${rem.id}')" 
             ${rem.is_active ? "checked" : ""} 

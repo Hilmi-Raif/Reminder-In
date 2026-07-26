@@ -1449,3 +1449,15 @@ input[type="radio"] {
   display: flex;
 }
 
+.app-version-badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border: 2px solid var(--neo-border);
+  border-radius: var(--neo-radius-sm);
+  background: var(--surface-2);
+  color: var(--text-color);
+  opacity: 0.85;
+}
+

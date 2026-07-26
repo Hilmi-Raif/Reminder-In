@@ -31,6 +31,7 @@ import (
 )
 
 var (
+	Version           = "dev"
 	jwtSecret         []byte
 	trustProxyHeaders bool
 )
@@ -202,7 +203,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	log.Printf("Server running on port %s", port)
+	log.Printf("Starting ReminderIn %s on port %s", Version, port)
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -333,7 +334,12 @@ func sessionCheckHandler(w http.ResponseWriter, r *http.Request) {
 		handler.WriteError(w, http.StatusUnauthorized, "Unauthorized", nil)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"version": Version,
+	})
 }
 
 func authMiddleware(next http.Handler) http.Handler {
