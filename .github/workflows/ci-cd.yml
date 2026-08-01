@@ -37,7 +37,7 @@ jobs:
       - name: Fetch Dependabot Metadata
         if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'
         id: dependabot-metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
 
       - name: Dependabot Auto-Merge (whatsmeow only)
         if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request' && contains(steps.dependabot-metadata.outputs.dependency-names, 'go.mau.fi/whatsmeow')
