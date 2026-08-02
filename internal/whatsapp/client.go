@@ -283,6 +283,16 @@ func (cm *ClientManager) EnsureClient(user string) error {
 	client, ok := cm.clients[user]
 	cm.mu.RUnlock()
 	if ok && client != nil {
+		if client.IsConnected() {
+			return nil
+		}
+		cm.log.Warnf("Client %s exists in runtime map but disconnected, attempting reconnect", user)
+		if err := cm.connectWithRetry(client); err != nil {
+			if isFatalConnectError(err) {
+				cm.handleRuntimeDisconnect(user, "reconnect fatal error: "+err.Error(), true)
+			}
+			return err
+		}
 		return nil
 	}
 

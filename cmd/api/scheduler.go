@@ -250,10 +250,10 @@ func (s *Scheduler) checkWAHealth() {
 		return
 	}
 	if err := s.waMgr.EnsureClient(waNumber); err != nil {
-		log.Printf("WA health: client %s is disconnected and reload failed: %v", waNumber, err)
+		log.Printf("WA health: client %s is disconnected and recovery failed: %v", waNumber, err)
 		return
 	}
-	log.Printf("WA health: client %s is disconnected, recovery checked", waNumber)
+	log.Printf("WA health: client %s disconnected recovery succeeded (reconnected)", waNumber)
 }
 
 func randomSendDelay(base time.Duration) time.Duration {
