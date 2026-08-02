@@ -127,6 +127,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init WA manager: %v", err)
 	}
+	waMgr.SetOnUnlink(func(user string) {
+		currentWANumber := sqliteStore.GetWANumber()
+		if currentWANumber == user || currentWANumber == "" {
+			log.Printf("WhatsApp session unlinked/logged out for %s, clearing wa_number in store", user)
+			if err := sqliteStore.UpdateWANumber(""); err != nil {
+				log.Printf("Failed to clear wa_number in store on unlink: %v", err)
+			}
+		}
+	})
 	loadAllWAClients := strings.EqualFold(os.Getenv("WA_LOAD_ALL_CLIENTS"), "true")
 	if loadAllWAClients {
 		if err := waMgr.LoadAllClients(); err != nil {

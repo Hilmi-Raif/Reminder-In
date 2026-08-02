@@ -67,9 +67,16 @@ func TestRuntimeDisconnectRemovesOnlyRuntimeClient(t *testing.T) {
 	}
 
 	cm.clients["628123456789"] = &whatsmeow.Client{}
-	cm.handleRuntimeDisconnect("628123456789", "logged_out", true)
+	unlinkedUser := ""
+	cm.SetOnUnlink(func(user string) {
+		unlinkedUser = user
+	})
+	cm.handleRuntimeDisconnect("628123456789", "logged_out", true, true)
 
 	if _, ok := cm.clients["628123456789"]; ok {
 		t.Fatal("runtime disconnect did not remove client")
+	}
+	if unlinkedUser != "628123456789" {
+		t.Fatalf("expected unlinkedUser to be 628123456789, got %q", unlinkedUser)
 	}
 }

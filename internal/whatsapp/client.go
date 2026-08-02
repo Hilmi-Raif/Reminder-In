@@ -33,6 +33,9 @@ type ClientManager struct {
 	sendDelay     time.Duration
 	groupsCache   map[string]groupCacheEntry
 	contactsCache map[string]contactCacheEntry
+
+	onUnlink   func(user string)
+	onUnlinkMu sync.RWMutex
 }
 
 type groupCacheEntry struct {
@@ -88,6 +91,21 @@ func NewClientManager() (*ClientManager, error) {
 	}, nil
 }
 
+func (cm *ClientManager) SetOnUnlink(fn func(user string)) {
+	cm.onUnlinkMu.Lock()
+	cm.onUnlink = fn
+	cm.onUnlinkMu.Unlock()
+}
+
+func (cm *ClientManager) triggerOnUnlink(user string) {
+	cm.onUnlinkMu.RLock()
+	fn := cm.onUnlink
+	cm.onUnlinkMu.RUnlock()
+	if fn != nil {
+		fn(user)
+	}
+}
+
 func (cm *ClientManager) GetClient(jid string) (*whatsmeow.Client, error) {
 	cm.mu.RLock()
 	client, ok := cm.clients[jid]
@@ -128,11 +146,11 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 			}
 			user := client.Store.ID.User
 			reason := fmt.Sprintf("OnConnect=%v Reason=%v", e.OnConnect, e.Reason)
-			cm.handleRuntimeDisconnect(user, "logged out: "+reason, true)
+			cm.handleRuntimeDisconnect(user, "logged out: "+reason, true, true)
 		case *events.ClientOutdated:
 			if client.Store.ID != nil {
 				user := client.Store.ID.User
-				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false, false)
 			} else {
 				cm.log.Errorf("Auth client outdated (405); update whatsmeow and rebuild the deployment image")
 			}
@@ -147,7 +165,7 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 		case *events.StreamReplaced:
 			if client.Store.ID != nil {
 				user := client.Store.ID.User
-				cm.handleRuntimeDisconnect(user, "stream replaced (another device connected with same session)", true)
+				cm.handleRuntimeDisconnect(user, "stream replaced (another device connected with same session)", true, true)
 			}
 		case *events.TemporaryBan:
 			if client.Store.ID != nil {
@@ -165,11 +183,14 @@ func (cm *ClientManager) removeClient(user string) {
 	cm.mu.Unlock()
 }
 
-func (cm *ClientManager) handleRuntimeDisconnect(user string, reason string, remove bool) {
+func (cm *ClientManager) handleRuntimeDisconnect(user string, reason string, remove bool, isLoggedOut bool) {
 	if remove {
 		cm.removeClient(user)
 	}
 	cm.log.Warnf("Client %s runtime disconnected: %s", user, reason)
+	if isLoggedOut {
+		cm.triggerOnUnlink(user)
+	}
 }
 
 func (cm *ClientManager) LoadAllClients() error {
@@ -194,11 +215,11 @@ func (cm *ClientManager) LoadAllClients() error {
 			user := device.ID.User
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isClientOutdatedConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false, false)
 				return false
 			}
 			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
+				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true, true)
 				return false
 			}
 			return true
@@ -214,7 +235,7 @@ func (cm *ClientManager) LoadAllClients() error {
 		if err := cm.connectWithRetry(client); err != nil {
 			if device.ID != nil && isFatalConnectError(err) {
 				user := device.ID.User
-				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true)
+				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true, true)
 			}
 			continue
 		}
@@ -245,11 +266,11 @@ func (cm *ClientManager) LoadClient(user string) error {
 		client.AutoReconnectHook = func(err error) bool {
 			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isClientOutdatedConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false)
+				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false, false)
 				return false
 			}
 			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true)
+				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true, true)
 				return false
 			}
 			return true
@@ -263,7 +284,7 @@ func (cm *ClientManager) LoadClient(user string) error {
 
 		if err := cm.connectWithRetry(client); err != nil {
 			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true)
+				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true, true)
 			}
 			return err
 		}
@@ -289,7 +310,7 @@ func (cm *ClientManager) EnsureClient(user string) error {
 		cm.log.Warnf("Client %s exists in runtime map but disconnected, attempting reconnect", user)
 		if err := cm.connectWithRetry(client); err != nil {
 			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "reconnect fatal error: "+err.Error(), true)
+				cm.handleRuntimeDisconnect(user, "reconnect fatal error: "+err.Error(), true, true)
 			}
 			return err
 		}
@@ -403,6 +424,7 @@ func (cm *ClientManager) Logout(jid string) error {
 	delete(cm.groupsCache, jid)
 	delete(cm.contactsCache, jid)
 	cm.mu.Unlock()
+	cm.triggerOnUnlink(jid)
 	if logoutErr != nil {
 		return logoutErr
 	}
