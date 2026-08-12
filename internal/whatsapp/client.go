@@ -122,12 +122,12 @@ func (cm *ClientManager) GetNewAuthClient() *whatsmeow.Client {
 	client := whatsmeow.NewClient(deviceStore, cm.log)
 	client.EnableAutoReconnect = true
 	client.AutoReconnectHook = func(err error) bool {
-		cm.log.Warnf("Auto-reconnect failed (auth client): %v", err)
 		if isClientOutdatedConnectError(err) {
 			cm.log.Errorf("Auth client hit 405 ClientOutdated; stopping reconnect until deployment is updated")
 			return false
 		}
-		return !isFatalConnectError(err)
+		cm.log.Debugf("Auto-reconnect failed (auth client): %v", err)
+		return true
 	}
 	cm.setupEventHandler(client)
 	return client
@@ -156,7 +156,11 @@ func (cm *ClientManager) setupEventHandler(client *whatsmeow.Client) {
 			}
 		case *events.KeepAliveTimeout:
 			if client.Store.ID != nil {
-				cm.log.Warnf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
+				if e.ErrorCount <= 1 {
+					cm.log.Warnf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
+				} else {
+					cm.log.Debugf("Client %s keepalive timeout (count=%d, last_success=%v)", client.Store.ID.User, e.ErrorCount, e.LastSuccess)
+				}
 			}
 		case *events.KeepAliveRestored:
 			if client.Store.ID != nil {
@@ -205,23 +209,19 @@ func (cm *ClientManager) LoadAllClients() error {
 		client.InitialAutoReconnect = true
 		client.AutoReconnectHook = func(err error) bool {
 			if device.ID == nil {
-				cm.log.Warnf("Auto-reconnect failed for unknown client: %v", err)
 				if isClientOutdatedConnectError(err) {
 					cm.log.Errorf("Unknown client hit 405 ClientOutdated; stopping reconnect until deployment is updated")
 					return false
 				}
-				return !isFatalConnectError(err)
+				cm.log.Debugf("Auto-reconnect failed for unknown client: %v", err)
+				return true
 			}
 			user := device.ID.User
-			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isClientOutdatedConnectError(err) {
 				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false, false)
 				return false
 			}
-			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true, true)
-				return false
-			}
+			cm.log.Debugf("Auto-reconnect for %s failed: %v", user, err)
 			return true
 		}
 		cm.setupEventHandler(client)
@@ -232,11 +232,7 @@ func (cm *ClientManager) LoadAllClients() error {
 			delete(cm.contactsCache, device.ID.User)
 			cm.mu.Unlock()
 		}
-		if err := cm.connectWithRetry(client); err != nil {
-			if device.ID != nil && isFatalConnectError(err) {
-				user := device.ID.User
-				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true, true)
-			}
+		if err := client.Connect(); err != nil {
 			continue
 		}
 	}
@@ -264,15 +260,11 @@ func (cm *ClientManager) LoadClient(user string) error {
 		client.EnableAutoReconnect = true
 		client.InitialAutoReconnect = true
 		client.AutoReconnectHook = func(err error) bool {
-			cm.log.Warnf("Auto-reconnect for %s failed: %v", user, err)
 			if isClientOutdatedConnectError(err) {
 				cm.handleRuntimeDisconnect(user, "client outdated (405); waiting for updated deployment image", false, false)
 				return false
 			}
-			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "fatal reconnect error: "+err.Error(), true, true)
-				return false
-			}
+			cm.log.Debugf("Auto-reconnect for %s failed: %v", user, err)
 			return true
 		}
 		cm.setupEventHandler(client)
@@ -282,10 +274,7 @@ func (cm *ClientManager) LoadClient(user string) error {
 		delete(cm.contactsCache, user)
 		cm.mu.Unlock()
 
-		if err := cm.connectWithRetry(client); err != nil {
-			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "initial connect fatal error: "+err.Error(), true, true)
-			}
+		if err := client.Connect(); err != nil {
 			return err
 		}
 		return nil
@@ -307,13 +296,7 @@ func (cm *ClientManager) EnsureClient(user string) error {
 		if client.IsConnected() {
 			return nil
 		}
-		cm.log.Warnf("Client %s exists in runtime map but disconnected, attempting reconnect", user)
-		if err := cm.connectWithRetry(client); err != nil {
-			if isFatalConnectError(err) {
-				cm.handleRuntimeDisconnect(user, "reconnect fatal error: "+err.Error(), true, true)
-			}
-			return err
-		}
+		cm.log.Debugf("Client %s is disconnected; waiting for whatsmeow auto-reconnect", user)
 		return nil
 	}
 
@@ -614,43 +597,12 @@ func durationFromEnvMilliseconds(key string, fallbackMilliseconds int) time.Dura
 	return time.Duration(milliseconds) * time.Millisecond
 }
 
-func (cm *ClientManager) connectWithRetry(client *whatsmeow.Client) error {
-	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 20 * time.Second}
-	var lastErr error
-	for attempt := 0; attempt <= len(backoff); attempt++ {
-		if client.IsConnected() {
-			return nil
-		}
-		err := client.Connect()
-		if err == nil {
-			return nil
-		}
-		lastErr = err
-		if isClientOutdatedConnectError(err) || isFatalConnectError(err) || attempt == len(backoff) {
-			break
-		}
-		time.Sleep(backoff[attempt])
-	}
-	return lastErr
-}
-
 func isClientOutdatedConnectError(err error) bool {
 	if err == nil {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "405") || strings.Contains(msg, "client outdated") || strings.Contains(msg, "client is out of date")
-}
-
-func isFatalConnectError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if isClientOutdatedConnectError(err) {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "401") || strings.Contains(msg, "403") || strings.Contains(msg, "logged out") || strings.Contains(msg, "device_removed") || strings.Contains(msg, "unofficial app")
 }
 
 func (cm *ClientManager) IsConnected(jid string) bool {
